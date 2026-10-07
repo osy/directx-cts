@@ -1,0 +1,7 @@
+; Proxy for dcomp.dll.  Importers reach it through a length-preserving import-name
+; rewrite, so the forwarder target "dcomp" still resolves to Wine's implementation.
+; The ordinals are the ones the importer uses; 2005 has no name in the import table.
+LIBRARY dxcdc
+EXPORTS
+    DCompositionCreateSurfaceHandle = dcomp.DCompositionCreateSurfaceHandle @2004
+    CreatePresentationFactory = dxcts_create_presentation_factory @2005

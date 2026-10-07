@@ -1,0 +1,6 @@
+LIBRARY dxcts_power_setting_compat_shim
+EXPORTS
+    PowerGetActiveScheme = dxctspwr.PowerGetActiveScheme
+    PowerSetActiveScheme = dxctspwr.PowerSetActiveScheme
+    PowerWriteACValueIndex = dxctspwr.PowerWriteACValueIndex
+    PowerWriteDCValueIndex = dxctspwr.PowerWriteDCValueIndex

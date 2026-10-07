@@ -1,0 +1,28 @@
+; Load-fixing proxy for d3d12.dll.
+;
+; Pass-through entries are loader forwarders, so signatures and calling conventions
+; are preserved exactly and no argument is ever touched.  Importers reach this module
+; through a length-preserving import-name rewrite, so the forwarder target "d3d12"
+; still resolves to the platform's own implementation.
+LIBRARY dxc12
+EXPORTS
+    GetBehaviorValue = d3d12.GetBehaviorValue @100
+    D3D12CoreCreateLayeredDevice = d3d12.D3D12CoreCreateLayeredDevice @103
+    D3D12CoreGetLayeredDeviceSize = d3d12.D3D12CoreGetLayeredDeviceSize @104
+    D3D12CoreRegisterLayers = d3d12.D3D12CoreRegisterLayers @105
+    D3D12CreateDevice = dxcts_d3d12_create_device @101
+    D3D12CreateRootSignatureDeserializer = d3d12.D3D12CreateRootSignatureDeserializer @106
+    D3D12CreateVersionedRootSignatureDeserializer = d3d12.D3D12CreateVersionedRootSignatureDeserializer @107
+    D3D12EnableExperimentalFeatures = d3d12.D3D12EnableExperimentalFeatures @108
+    D3D12GetDebugInterface = d3d12.D3D12GetDebugInterface @102
+    D3D12SerializeRootSignature = d3d12.D3D12SerializeRootSignature @109
+    D3D12SerializeVersionedRootSignature = d3d12.D3D12SerializeVersionedRootSignature @110
+; d3d12.dll does not export this - it lives in d3d12core - and Wine's d3d12core has
+; only a stub that raises "unimplemented function", killing the process.  d3d12.c
+; forwards to a real d3d12core where there is one and reports absence otherwise.
+    D3D12GetInterface = dxcts_d3d12_get_interface
+; Ordinals match the stock d3d12 numbering: D3DConf_12_Core.dll imports
+; D3D12CreateDevice and D3D12GetDebugInterface by ordinal, not by name.
+; PIX instrumentation hooks with no Wine equivalent; stubbed in d3d12.c.
+    D3D12PIXEventsReplaceBlock
+    D3D12PIXGetThreadInfo

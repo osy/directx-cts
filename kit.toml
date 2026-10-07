@@ -1,0 +1,66 @@
+# Pinned Windows HLK release.  Re-pointing at a new kit = change `fwlink` + `version`.
+#
+# `fwlink` is Microsoft's download redirector for the HLK bootstrapper.  Following it
+# yields <base>/HLKSetup.exe; the CDN base directory is taken from that redirect at fetch
+# time, so no content GUID is baked in here.
+
+[kit]
+fwlink  = 2364011
+version = "10.1.26100.8328"
+name    = "Windows HLK (Updated May 2026) for Windows 11 24H2 / 25H2 / Server 2025"
+
+# Installer payloads to fetch, by .msi filename as it appears in BurnManifest.xml.
+# Each MSI's external .cab files are resolved from its own Media table after download,
+# so only the bytes we actually need are pulled (selecting whole Burn packages would
+# drag in ~1.5 GB of WPT / Debuggers / AppVerifier we have no use for).
+#
+# Every entry is justified by a File-table lookup against the kit:
+[msi]
+required = [
+    # WGF11*/10L9*/DXGI* test exes (all three arches), dawn_end2end_tests.exe,
+    # VerifySupportFiles, TDRWatch, d3d11ref/d3d10ref/d3dref9.
+    "HLK ClientCore.Device.Graphics Content-x86_en-us.msi",
+    # D3DConf_11/12_Core.dll, D3DConf_12_Video.dll, d3ddriververifier.dll,
+    # ShaderOpArith{,Table}.xml (the DXIL corpus).
+    "HLK OnecoreUAP.Device.Graphics Content-x86_en-us.msi",
+    # Remaining graphics content.
+    "HLK Device.Graphics Content-x86_en-us.msi",
+    # mock10.dll, required by D3DConf_11_Core.dll and present in no graphics package.
+    "HLK OnecoreUAP.Logo.Shared Content-x86_en-us.msi",
+    # TE.exe + Wex/Conduit + WTTLog.dll.  Its cabs are embedded, and this single
+    # MSI ships all three architectures (94 x86 / 88 x64 / 93 arm64 files), so the
+    # per-arch TAEF MSIs are 285 MB each of pure duplication.  [verify] below asserts
+    # all three TE.exe land, so if a future kit splits them this fails loudly.
+    "HLK TAEF Tools-x86_en-us.msi",
+]
+# Job/requirement/OSEdition definitions.  Not needed to run tests (we enumerate the
+# binaries directly) but small, and useful for cross-referencing feature coverage.
+optional = [
+    "HLK Content Data-x86_en-us.msi",
+    "HLK OnecoreUAP Content Data-x86_en-us.msi",
+    "ClientCore.HLK Content Data-x86_en-us.msi",
+]
+
+# Post-extraction closure check.  If the MSI selection above ever becomes wrong or
+# incomplete (a new kit moves a file between packages), extraction fails here with the
+# missing paths named, rather than silently producing a tree that breaks at run time.
+# Paths are relative to the normalised kit root.
+[verify]
+required_files = [
+    "Hardware Lab Kit/Tests/amd64/nttest/windowstest/graphics/d3d/conf/WGF11Blend.exe",
+    "Hardware Lab Kit/Tests/arm64/nttest/windowstest/graphics/d3d/conf/WGF11Blend.exe",
+    "Hardware Lab Kit/Tests/x86/nttest/windowstest/graphics/d3d/conf/WGF11Blend.exe",
+    "Hardware Lab Kit/Tests/amd64/nttest/windowstest/graphics/d3d/conf/D3DConf_12_Core.dll",
+    "Hardware Lab Kit/Tests/amd64/nttest/windowstest/graphics/d3d/conf/D3DConf_12_Core.xml",
+    "Hardware Lab Kit/Tests/amd64/nttest/windowstest/graphics/d3d/conf/ShaderOpArith.xml",
+    "Hardware Lab Kit/Tests/amd64/nttest/windowstest/graphics/d3d/conf/ShaderOpArithTable.xml",
+    "Hardware Lab Kit/Tests/amd64/nttest/windowstest/graphics/d3d/support/d3ddriververifier.dll",
+    "Hardware Lab Kit/Tests/amd64/nttest/windowstest/graphics/common/VerifySupportFiles.dll",
+    "Hardware Lab Kit/Tests/amd64/nttest/windowstest/graphics/TDRWatch.exe",
+    "Hardware Lab Kit/Tests/amd64/nttest/windowstest/common/mock10.dll",
+    "Hardware Lab Kit/Tests/amd64/nttest/windowstest/graphics/web/dawn/dawn_end2end_tests.exe",
+    "Testing/Runtimes/TAEF/x64/TE.exe",
+    "Testing/Runtimes/TAEF/x86/TE.exe",
+    "Testing/Runtimes/TAEF/arm64/TE.exe",
+    "Testing/Runtimes/TAEF/x64/WTTLog.dll",
+]

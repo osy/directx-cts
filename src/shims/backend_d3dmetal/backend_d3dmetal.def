@@ -1,0 +1,8 @@
+; The D3DMetal backend compatibility layer.  Loaded by name from beside the d3d11 and
+; d3d12 shims when the runner selects it (DXCTS_BACKEND=d3dmetal); nothing imports it.
+LIBRARY dxcts_backend_d3dmetal
+EXPORTS
+    dxcts_backend_d3d11_create_device
+    dxcts_backend_d3d11_create_device_and_swapchain
+    dxcts_backend_d3d12_create_device
+    dxcts_backend_workaround

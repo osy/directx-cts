@@ -1,0 +1,67 @@
+; Forwarding proxy for oleaut32.dll.
+;
+; TE.Model.dll (imported by TE.exe, so TAEF does not start without it) binds the
+; *_User*64 RPC marshalling helpers.  Wine exports only the unsuffixed names,
+; which on x64 already carry the 64-bit semantics, so each maps straight onto its
+; counterpart.  Ordinals are preserved because part of the surface is imported by
+; ordinal rather than by name.
+LIBRARY dxctsole
+EXPORTS
+    VariantCopy = oleaut32.VariantCopy @10
+    VariantChangeType = oleaut32.VariantChangeType @12
+    SysStringByteLen = oleaut32.SysStringByteLen @149
+    SafeArrayCreate = oleaut32.SafeArrayCreate @15
+    SysAllocStringByteLen = oleaut32.SysAllocStringByteLen @150
+    SafeArrayDestroy = oleaut32.SafeArrayDestroy @16
+    LoadTypeLib = oleaut32.LoadTypeLib @161
+    LoadRegTypeLib = oleaut32.LoadRegTypeLib @162
+    RegisterTypeLib = oleaut32.RegisterTypeLib @163
+    SafeArrayGetDim = oleaut32.SafeArrayGetDim @17
+    UnRegisterTypeLib = oleaut32.UnRegisterTypeLib @186
+    SafeArrayGetUBound = oleaut32.SafeArrayGetUBound @19
+    SysAllocString = oleaut32.SysAllocString @2
+    SafeArrayGetLBound = oleaut32.SafeArrayGetLBound @20
+    GetErrorInfo = oleaut32.GetErrorInfo @200
+    SetErrorInfo = oleaut32.SetErrorInfo @201
+    CreateErrorInfo = oleaut32.CreateErrorInfo @202
+    SafeArrayLock = oleaut32.SafeArrayLock @21
+    SafeArrayUnlock = oleaut32.SafeArrayUnlock @22
+    SafeArrayAccessData = oleaut32.SafeArrayAccessData @23
+    SafeArrayUnaccessData = oleaut32.SafeArrayUnaccessData @24
+    SafeArrayGetElement = oleaut32.SafeArrayGetElement @25
+    SafeArrayPutElement = oleaut32.SafeArrayPutElement @26
+    SafeArrayCopy = oleaut32.SafeArrayCopy @27
+    VarUI4FromStr = oleaut32.VarUI4FromStr @277
+    BSTR_UserSize = oleaut32.BSTR_UserSize @283
+    BSTR_UserMarshal = oleaut32.BSTR_UserMarshal @284
+    BSTR_UserUnmarshal = oleaut32.BSTR_UserUnmarshal @285
+    BSTR_UserFree = oleaut32.BSTR_UserFree @286
+    VARIANT_UserSize = oleaut32.VARIANT_UserSize @287
+    VARIANT_UserMarshal = oleaut32.VARIANT_UserMarshal @288
+    VARIANT_UserUnmarshal = oleaut32.VARIANT_UserUnmarshal @289
+    VARIANT_UserFree = oleaut32.VARIANT_UserFree @290
+    LPSAFEARRAY_UserSize = oleaut32.LPSAFEARRAY_UserSize @291
+    LPSAFEARRAY_UserMarshal = oleaut32.LPSAFEARRAY_UserMarshal @292
+    LPSAFEARRAY_UserUnmarshal = oleaut32.LPSAFEARRAY_UserUnmarshal @293
+    LPSAFEARRAY_UserFree = oleaut32.LPSAFEARRAY_UserFree @294
+    VarBstrCat = oleaut32.VarBstrCat @313
+    SysAllocStringLen = oleaut32.SysAllocStringLen @4
+    SafeArrayRedim = oleaut32.SafeArrayRedim @40
+    SysFreeString = oleaut32.SysFreeString @6
+    SysStringLen = oleaut32.SysStringLen @7
+    SafeArrayGetVartype = oleaut32.SafeArrayGetVartype @77
+    VariantInit = oleaut32.VariantInit @8
+    VarFormat = oleaut32.VarFormat @87
+    VariantClear = oleaut32.VariantClear @9
+    BSTR_UserFree64 = oleaut32.BSTR_UserFree
+    BSTR_UserMarshal64 = oleaut32.BSTR_UserMarshal
+    BSTR_UserSize64 = oleaut32.BSTR_UserSize
+    BSTR_UserUnmarshal64 = oleaut32.BSTR_UserUnmarshal
+    LPSAFEARRAY_UserFree64 = oleaut32.LPSAFEARRAY_UserFree
+    LPSAFEARRAY_UserMarshal64 = oleaut32.LPSAFEARRAY_UserMarshal
+    LPSAFEARRAY_UserSize64 = oleaut32.LPSAFEARRAY_UserSize
+    LPSAFEARRAY_UserUnmarshal64 = oleaut32.LPSAFEARRAY_UserUnmarshal
+    VARIANT_UserFree64 = oleaut32.VARIANT_UserFree
+    VARIANT_UserMarshal64 = oleaut32.VARIANT_UserMarshal
+    VARIANT_UserSize64 = oleaut32.VARIANT_UserSize
+    VARIANT_UserUnmarshal64 = oleaut32.VARIANT_UserUnmarshal

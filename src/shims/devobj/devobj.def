@@ -1,0 +1,11 @@
+; DEVOBJ.dll is absent from Wine and imported by every WGF test executable.  Its six
+; entry points are the device-enumeration half of setupapi under another name, so each
+; forwards there: the device interface paths the tests receive are the platform's own.
+LIBRARY DEVOBJ
+EXPORTS
+    DevObjCreateDeviceInfoList = setupapi.SetupDiCreateDeviceInfoList
+    DevObjDestroyDeviceInfoList = setupapi.SetupDiDestroyDeviceInfoList
+    DevObjEnumDeviceInterfaces = setupapi.SetupDiEnumDeviceInterfaces
+    DevObjGetClassDevs = setupapi.SetupDiGetClassDevsW
+    DevObjGetDeviceInfoListDetail = setupapi.SetupDiGetDeviceInfoListDetailW
+    DevObjGetDeviceInterfaceDetail = setupapi.SetupDiGetDeviceInterfaceDetailW

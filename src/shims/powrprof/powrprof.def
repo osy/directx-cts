@@ -1,0 +1,15 @@
+LIBRARY dxctspwr
+EXPORTS
+    PowerReadACValueIndex
+    PowerReadDCValueIndex
+    PowerReadACDefaultIndex
+    PowerReadDCDefaultIndex
+    PowerReadValueMax
+    PowerReadValueMin
+    PowerWriteACValueIndex
+    PowerWriteDCValueIndex
+    PowerDeterminePlatformRole = powrprof.PowerDeterminePlatformRole
+    PowerEnumerate = powrprof.PowerEnumerate
+    PowerGetActiveScheme = powrprof.PowerGetActiveScheme
+    PowerSetActiveScheme = powrprof.PowerSetActiveScheme
+    SetSuspendState = powrprof.SetSuspendState

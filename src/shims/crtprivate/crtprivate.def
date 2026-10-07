@@ -1,0 +1,53 @@
+; Forwarding proxy for api-ms-win-crt-private-l1-1-0.
+;
+; Wine's ucrtbase exports every entry point in this apiset except
+; __C_specific_handler_noexcept, which lives in vcruntime140.  Without it
+; d3ddriververifier.dll cannot load, and the HLK framework then logs an error
+; after every test case and fails it.  Importers reach this module through a
+; length-preserving import-name rewrite, since apiset names never fall through
+; to the file search.
+LIBRARY dxcts_crt_private_compat_shim
+EXPORTS
+    _CxxThrowException = ucrtbase._CxxThrowException
+    __C_specific_handler = ucrtbase.__C_specific_handler
+    __C_specific_handler_noexcept = vcruntime140.__C_specific_handler_noexcept
+    __CxxFrameHandler3 = ucrtbase.__CxxFrameHandler3
+    __CxxFrameHandler4 = ucrtbase.__CxxFrameHandler4
+    __current_exception = ucrtbase.__current_exception
+    __current_exception_context = ucrtbase.__current_exception_context
+    __std_terminate = ucrtbase.__std_terminate
+    _o___std_exception_copy = ucrtbase._o___std_exception_copy
+    _o___std_exception_destroy = ucrtbase._o___std_exception_destroy
+    _o___std_type_info_destroy_list = ucrtbase._o___std_type_info_destroy_list
+    _o___std_type_info_name = ucrtbase._o___std_type_info_name
+    _o___stdio_common_vsprintf = ucrtbase._o___stdio_common_vsprintf
+    _o___stdio_common_vsprintf_s = ucrtbase._o___stdio_common_vsprintf_s
+    _o___stdio_common_vswprintf = ucrtbase._o___stdio_common_vswprintf
+    _o__callnewh = ucrtbase._o__callnewh
+    _o__cexit = ucrtbase._o__cexit
+    _o__configure_narrow_argv = ucrtbase._o__configure_narrow_argv
+    _o__crt_atexit = ucrtbase._o__crt_atexit
+    _o__errno = ucrtbase._o__errno
+    _o__execute_onexit_table = ucrtbase._o__execute_onexit_table
+    _o__initialize_narrow_environment = ucrtbase._o__initialize_narrow_environment
+    _o__initialize_onexit_table = ucrtbase._o__initialize_onexit_table
+    _o__invalid_parameter_noinfo = ucrtbase._o__invalid_parameter_noinfo
+    _o__invalid_parameter_noinfo_noreturn = ucrtbase._o__invalid_parameter_noinfo_noreturn
+    _o__purecall = ucrtbase._o__purecall
+    _o__register_onexit_function = ucrtbase._o__register_onexit_function
+    _o__seh_filter_dll = ucrtbase._o__seh_filter_dll
+    _o__stricmp = ucrtbase._o__stricmp
+    _o_ceil = ucrtbase._o_ceil
+    _o_ceilf = ucrtbase._o_ceilf
+    _o_floor = ucrtbase._o_floor
+    _o_free = ucrtbase._o_free
+    _o_isdigit = ucrtbase._o_isdigit
+    _o_malloc = ucrtbase._o_malloc
+    _o_rand = ucrtbase._o_rand
+    _o_sqrt = ucrtbase._o_sqrt
+    _o_terminate = ucrtbase._o_terminate
+    _o_tolower = ucrtbase._o_tolower
+    memcmp = ucrtbase.memcmp
+    memcpy = ucrtbase.memcpy
+    memmove = ucrtbase.memmove
+    strstr = ucrtbase.strstr

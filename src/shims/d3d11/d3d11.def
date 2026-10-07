@@ -1,0 +1,12 @@
+; Pass-through entries are loader forwarders.  Both device-creation entry points are
+; intercepted, so the same wrapped device and context come back either way; see
+; d3d11.c for why they are wrapped rather than patched.
+LIBRARY dxc11
+EXPORTS
+    D3D11CreateDevice = dxcts_create_device
+    D3D11CreateDeviceAndSwapChain = dxcts_create_device_and_swapchain
+    D3D11CoreCreateLayeredDevice = d3d11.D3D11CoreCreateLayeredDevice
+    D3D11CoreGetLayeredDeviceSize = d3d11.D3D11CoreGetLayeredDeviceSize
+    D3D11CoreRegisterLayers = d3d11.D3D11CoreRegisterLayers
+    D3D11On12CreateDevice = d3d11.D3D11On12CreateDevice
+    CreateDirect3D11DeviceFromDXGIDevice
