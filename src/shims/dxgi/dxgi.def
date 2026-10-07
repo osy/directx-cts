@@ -1,0 +1,14 @@
+; Adapter-enumeration proxy for dxgi.dll.
+;
+; Only factory creation is intercepted, so that adapter enumeration can be answered
+; the way a run asked for; see dxgi.c.  Everything else is a loader
+; forwarder to the platform's own implementation, which importers still reach by name
+; because they were rewritten to this module instead.
+LIBRARY dxcg
+EXPORTS
+    CreateDXGIFactory = dxcts_create_factory
+    CreateDXGIFactory1 = dxcts_create_factory1
+    CreateDXGIFactory2 = dxcts_create_factory2
+    DXGIGetDebugInterface1 = dxgi.DXGIGetDebugInterface1
+    DXGIDeclareAdapterRemovalSupport = dxgi.DXGIDeclareAdapterRemovalSupport
+    DXGIGetDebugInterface = dxgi.DXGIGetDebugInterface

@@ -1,0 +1,9 @@
+; Undecorated names: the test binaries import these without the x86 stdcall suffix.
+LIBRARY DEVOBJ
+EXPORTS
+    DevObjCreateDeviceInfoList
+    DevObjDestroyDeviceInfoList
+    DevObjEnumDeviceInterfaces
+    DevObjGetClassDevs
+    DevObjGetDeviceInfoListDetail
+    DevObjGetDeviceInterfaceDetail

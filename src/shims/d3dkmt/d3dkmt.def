@@ -1,0 +1,28 @@
+; Undecorated names: importers reference these without the x86 stdcall suffix.
+LIBRARY dxcts_d3dkmt_compat_shim_v1
+EXPORTS
+    D3DKMTCloseAdapter
+    D3DKMTCreateAllocation
+    D3DKMTCreateAllocation2
+    D3DKMTCreateDevice
+    D3DKMTDestroyAllocation
+    D3DKMTDestroyDevice
+    D3DKMTEnumAdapters
+    D3DKMTEnumAdapters2
+    D3DKMTEnumAdapters3
+    D3DKMTEscape
+    D3DKMTOpenAdapterFromDeviceName
+    D3DKMTOpenAdapterFromGdiDisplayName
+    D3DKMTOpenAdapterFromHdc
+    D3DKMTOpenAdapterFromLuid
+    D3DKMTOpenResource
+    D3DKMTOpenResourceFromNtHandle
+    D3DKMTQueryAdapterInfo
+    D3DKMTQueryResourceInfo
+    D3DKMTQueryStatistics
+    D3DKMTQueryVideoMemoryInfo
+    D3DKMTSetQueuedLimit
+    D3DKMTSetVidPnSourceOwner
+    D3DKMTSubmitCommand
+    D3DKMTSubmitCommandToHwQueue
+    D3DKMTWaitForVerticalBlankEvent
