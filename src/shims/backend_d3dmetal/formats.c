@@ -64,8 +64,9 @@ static unsigned format_flags(UINT format)
     case DXGI_FORMAT_R32G32_SINT:           return COLOUR_INT;
     case DXGI_FORMAT_R32G8X24_TYPELESS:     return DEPTH_TYPELESS;
     case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:  return DEPTH;
+    /* Typed single-plane views despite the name, sampled like the D24 ones below. */
     case DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS:
-    case DXGI_FORMAT_X32_TYPELESS_G8X24_UINT: return DEPTH_TYPELESS;
+    case DXGI_FORMAT_X32_TYPELESS_G8X24_UINT: return DEPTH;
     case DXGI_FORMAT_R10G10B10A2_TYPELESS:  return TYPELESS_INT;
     case DXGI_FORMAT_R10G10B10A2_UNORM:     return COLOUR_BLEND;
     case DXGI_FORMAT_R10G10B10A2_UINT:      return COLOUR_INT;
