@@ -59,24 +59,16 @@ static void release(void *obj)
         ((dxcts_ref_fn)(*(void ***)obj)[2])(obj);
 }
 
-/* ID3D12Resource::GetDesc returns a 56-byte struct: through a hidden pointer passed
- * after `this` on x64 and x86, through x8 on arm64 - which is what a C function
- * returning the struct by value compiles to there. */
-#if defined(__aarch64__) || defined(_M_ARM64)
-typedef D3D12_RESOURCE_DESC (WINAPI *res_get_desc_fn)(void *);
-
-static void resource_desc(ID3D12Resource *r, D3D12_RESOURCE_DESC *out)
-{
-    *out = ((res_get_desc_fn)(*(void ***)r)[SLOT(ID3D12ResourceVtbl, GetDesc)])(r);
-}
-#else
+/* COM methods return a struct through a hidden pointer passed after `this`, on every
+ * architecture - the RetVal parameter d3d12.h's C interface spells out.  On arm64 this
+ * is not the C convention for a function returning the struct by value (x8, or x0:x1
+ * for 16 bytes), so the call must be declared this way rather than by value. */
 typedef D3D12_RESOURCE_DESC *(WINAPI *res_get_desc_fn)(void *, D3D12_RESOURCE_DESC *);
 
 static void resource_desc(ID3D12Resource *r, D3D12_RESOURCE_DESC *out)
 {
     ((res_get_desc_fn)(*(void ***)r)[SLOT(ID3D12ResourceVtbl, GetDesc)])(r, out);
 }
-#endif
 
 static const dxcts_iface k_devices[] = {
     { { 0x189819f1, 0x1db6, 0x4b57, { 0xbe,0x54,0x18,0x21,0x33,0x9b,0x85,0xf7 } },
@@ -407,25 +399,6 @@ static int alloc_info_refused(UINT n, const D3D12_RESOURCE_DESC *descs)
     return 0;
 }
 
-#if defined(__aarch64__) || defined(_M_ARM64)
-typedef D3D12_RESOURCE_ALLOCATION_INFO (WINAPI *alloc_info_fn)(void *, UINT, UINT,
-                                                               const D3D12_RESOURCE_DESC *);
-
-static D3D12_RESOURCE_ALLOCATION_INFO WINAPI dev_alloc_info(void *self, UINT mask, UINT n,
-                                                            const D3D12_RESOURCE_DESC *descs)
-{
-    D3D12_RESOURCE_ALLOCATION_INFO info;
-
-    if (alloc_info_refused(n, descs))
-    {
-        info.SizeInBytes = UINT64_MAX;
-        info.Alignment = 0;
-        return info;
-    }
-    return ((alloc_info_fn)REAL_DEV(self, GetResourceAllocationInfo))(dxcts_real(self), mask,
-                                                                       n, descs);
-}
-#else
 typedef D3D12_RESOURCE_ALLOCATION_INFO *(WINAPI *alloc_info_fn)(
     void *, D3D12_RESOURCE_ALLOCATION_INFO *, UINT, UINT, const D3D12_RESOURCE_DESC *);
 
@@ -445,7 +418,6 @@ static D3D12_RESOURCE_ALLOCATION_INFO *WINAPI dev_alloc_info(
     return ((alloc_info_fn)REAL_DEV(self, GetResourceAllocationInfo))(dxcts_real(self), ret,
                                                                        mask, n, descs);
 }
-#endif
 
 /* A render-target view of a buffer (D3D12_RTV_DIMENSION_BUFFER, legal in D3D12)
  * reaches D3D12Texture::GetView, which sends texture selectors to the MTLBuffer and
