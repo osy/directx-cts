@@ -1061,6 +1061,41 @@ static UINT bc_block_bytes(DXGI_FORMAT f)
     return 0;
 }
 
+/* A default-usage texture shaped like staging texture `res`, or NULL when `res` is not
+ * a staging texture (or the twin cannot be made). */
+static ID3D11Resource *default_twin(ID3D11Device *dev, ID3D11Resource *res)
+{
+    D3D11_RESOURCE_DIMENSION dim;
+    ID3D11Resource *twin = NULL;
+
+    ID3D11Resource_GetType(res, &dim);
+    if (dim == D3D11_RESOURCE_DIMENSION_TEXTURE3D)
+    {
+        D3D11_TEXTURE3D_DESC d;
+
+        ID3D11Texture3D_GetDesc((ID3D11Texture3D *)res, &d);
+        if (d.Usage != D3D11_USAGE_STAGING)
+            return NULL;
+        d.Usage = D3D11_USAGE_DEFAULT;
+        d.CPUAccessFlags = 0;
+        if (FAILED(ID3D11Device_CreateTexture3D(dev, &d, NULL, (ID3D11Texture3D **)&twin)))
+            return NULL;
+    }
+    else if (dim == D3D11_RESOURCE_DIMENSION_TEXTURE2D)
+    {
+        D3D11_TEXTURE2D_DESC d;
+
+        ID3D11Texture2D_GetDesc((ID3D11Texture2D *)res, &d);
+        if (d.Usage != D3D11_USAGE_STAGING)
+            return NULL;
+        d.Usage = D3D11_USAGE_DEFAULT;
+        d.CPUAccessFlags = 0;
+        if (FAILED(ID3D11Device_CreateTexture2D(dev, &d, NULL, (ID3D11Texture2D **)&twin)))
+            return NULL;
+    }
+    return twin;
+}
+
 /* 1 when the copy was served here.  Handles the 2D and 3D shapes. */
 static int copy_bc_to_uncompressed(ID3D11Device *dev, ID3D11DeviceContext *ctx,
                                    ID3D11Resource *dst, UINT dst_sub, UINT x, UINT y,
@@ -1070,7 +1105,7 @@ static int copy_bc_to_uncompressed(ID3D11Device *dev, ID3D11DeviceContext *ctx,
     tex_shape s, d;
     UINT block, mip, mw, mh, md, left = 0, top = 0, front = 0, right, bottom, back;
     UINT bx, by, bw, bh, nd, r, sl;
-    ID3D11Resource *staging = NULL;
+    ID3D11Resource *staging = NULL, *target;
     D3D11_MAPPED_SUBRESOURCE m;
     D3D11_BOX dbox;
     unsigned char *rows;
@@ -1156,8 +1191,18 @@ static int copy_bc_to_uncompressed(ID3D11Device *dev, ID3D11DeviceContext *ctx,
         return 0;
     dbox.left = x; dbox.top = y; dbox.front = z;
     dbox.right = x + bw; dbox.bottom = y + bh; dbox.back = z + nd;
-    ID3D11DeviceContext_UpdateSubresource(ctx, dst, dst_sub, &dbox, rows, bw * block,
+    /* UpdateSubresource cannot write a staging texture (the runtime drops the call),
+     * so a staging destination is written through a default-usage twin. */
+    if (!(target = default_twin(dev, dst)))
+        target = dst;
+    ID3D11DeviceContext_UpdateSubresource(ctx, target, dst_sub, &dbox, rows, bw * block,
                                           is3d ? (UINT)slice_bytes : 0);
+    if (target != dst)
+    {
+        ID3D11DeviceContext_CopySubresourceRegion(ctx, dst, dst_sub, x, y, z, target,
+                                                  dst_sub, &dbox);
+        release(target);
+    }
     free(rows);
     return 1;
 }
