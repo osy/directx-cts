@@ -368,7 +368,8 @@ static int rgb32_view(ID3D11View *view)
     return tagged;
 }
 
-/* 12-byte texels -> 16-byte texels, rows x slices, alpha appended. */
+/* 12-byte texels -> 16-byte texels, rows x slices, alpha appended.  Texels are
+ * copied as bytes: an application's initial data need not be 4-byte aligned. */
 static void rgb32_pack(unsigned char *dst, size_t dst_row, size_t dst_slice,
                        const unsigned char *src, size_t src_row, size_t src_slice,
                        UINT w, UINT rows, UINT slices, UINT alpha)
@@ -378,13 +379,13 @@ static void rgb32_pack(unsigned char *dst, size_t dst_row, size_t dst_slice,
     for (z = 0; z < slices; z++)
         for (y = 0; y < rows; y++)
         {
-            const UINT *s = (const UINT *)(src + z * src_slice + y * src_row);
-            UINT *d = (UINT *)(dst + z * dst_slice + y * dst_row);
+            const unsigned char *s = src + z * src_slice + y * src_row;
+            unsigned char *d = dst + z * dst_slice + y * dst_row;
 
             for (x = 0; x < w; x++)
             {
-                d[4 * x] = s[3 * x]; d[4 * x + 1] = s[3 * x + 1];
-                d[4 * x + 2] = s[3 * x + 2]; d[4 * x + 3] = alpha;
+                memcpy(d + 16 * x, s + 12 * x, 12);
+                memcpy(d + 16 * x + 12, &alpha, 4);
             }
         }
 }
@@ -398,14 +399,11 @@ static void rgb32_unpack(unsigned char *dst, size_t dst_row, size_t dst_slice,
     for (z = 0; z < slices; z++)
         for (y = 0; y < rows; y++)
         {
-            const UINT *s = (const UINT *)(src + z * src_slice + y * src_row);
-            UINT *d = (UINT *)(dst + z * dst_slice + y * dst_row);
+            const unsigned char *s = src + z * src_slice + y * src_row;
+            unsigned char *d = dst + z * dst_slice + y * dst_row;
 
             for (x = 0; x < w; x++)
-            {
-                d[3 * x] = s[4 * x]; d[3 * x + 1] = s[4 * x + 1];
-                d[3 * x + 2] = s[4 * x + 2];
-            }
+                memcpy(d + 12 * x, s + 16 * x, 12);
         }
 }
 
