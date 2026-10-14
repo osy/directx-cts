@@ -1904,18 +1904,16 @@ static int ps_minprec_on_position(const void *code, size_t size)
 /* --- draw-time guards --- */
 /*
  * Pipeline shapes D3DMetal accepts at bind time and dies on when it encodes the draw:
- *  - a geometry shader bound together with tessellation: it cannot compile the
- *    geometry function, leaves meshFunction nil, and Metal's validation abort()s on a
- *    libdispatch thread Wine cannot raise an exception on (all eight of
- *    WGF11Precision's ShaderInstructions groups wedged there);
  *  - a tessellation patch whose vertex-shader output does not fit the 0x3b80 bytes
  *    of threadgroup memory D3DMetal budgets per patch (control points x bytes per
  *    output vertex): it computes zero patches per threadgroup and divides by that;
  *  - alpha-to-coverage on a render target Metal cannot blend: pipeline validation
  *    abort()s.
- * The first two draws are dropped and fail on their readback like any wrong result;
- * the third goes out with alpha-to-coverage off.  The context tracks just enough
- * state to see each coming.
+ * The first draw is dropped and fails on its readback like any wrong result; the
+ * second goes out with alpha-to-coverage off.  A geometry shader under tessellation
+ * is not among them: the one D3DMetal cannot compile there is the pass-through GS,
+ * which is never bound (gs_tagged_pass_through), and every other one draws.  The
+ * context tracks just enough state to see each coming.
  */
 #define TESS_PATCH_BUDGET 0x3b80
 
@@ -2216,12 +2214,6 @@ static void draw_guard_enter(dm_context *w, draw_guard *g)
     g->swapped = 0;
     if (dm_knob_draw_guards())
     {
-        if (w->gs_bound && (w->hs_bound || w->ds_bound))
-        {
-            dm_count(&dm_counts.dropped_draws);
-            g->skip = 1;
-            return;
-        }
         if (w->hs_bound && w->patch_cps)
         {
             uint64_t need;
