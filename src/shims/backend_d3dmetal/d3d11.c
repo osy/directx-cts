@@ -1420,6 +1420,24 @@ static void WINAPI ctx_copy_region1(void *self, ID3D11Resource *dst, UINT dst_su
         dxcts_real(self), dst, dst_sub, x, y, z, src, src_sub, box, flags);
 }
 
+/* On a deferred context of a driver without command lists, Microsoft's runtime adds the
+ * destination box's offset to pSrcData (documented under
+ * ID3D11DeviceContext::UpdateSubresource), so applications pass pSrcData moved back by
+ * that offset, counted in their own texel size.  1 when that applies. */
+static int update_src_offset_quirk(ID3D11Device *dev, ID3D11DeviceContext *ctx,
+                                   const D3D11_BOX *box)
+{
+    D3D11_FEATURE_DATA_THREADING th;
+
+    if (!box || (!box->left && !box->top && !box->front)
+        || ID3D11DeviceContext_GetType(ctx) != D3D11_DEVICE_CONTEXT_DEFERRED)
+        return 0;
+    if (FAILED(ID3D11Device_CheckFeatureSupport(dev, D3D11_FEATURE_THREADING, &th,
+                                                sizeof(th))))
+        return 0;
+    return !th.DriverCommandLists;
+}
+
 /* 1 when the update was served here. */
 static int update_served(dm_context *w, ID3D11Resource *dst, UINT sub, const D3D11_BOX *box,
                          const void *src, UINT src_row, UINT src_depth, UINT flags,
@@ -1429,7 +1447,7 @@ static int update_served(dm_context *w, ID3D11Resource *dst, UINT sub, const D3D
     ds_texture dt;
     rgb32_tag t;
     UINT wd, rows, slices;
-    size_t srow, sslice, drow, dslice;
+    size_t srow, sslice, drow, dslice, back = 0;
     unsigned char *packed;
 
     if (!src)
@@ -1452,10 +1470,20 @@ static int update_served(dm_context *w, ID3D11Resource *dst, UINT sub, const D3D
     sslice = src_depth ? src_depth : srow * rows;
     drow = (size_t)wd * 16;
     dslice = drow * rows;
-    packed = malloc(dslice * slices);
+    /* Under the runtime's offset quirk the application moved src back in 12-byte
+     * texels and the runtime moves the packed data forward in 16-byte ones: find the
+     * box data, and lead the packed buffer with the runtime's offset. */
+    if (update_src_offset_quirk(ctx_real_device(w), real, box))
+    {
+        src = (const unsigned char *)src + box->front * sslice + box->top * srow
+              + (size_t)box->left * 12;
+        back = box->front * dslice + box->top * drow + (size_t)box->left * 16;
+    }
+    packed = malloc(back + dslice * slices);
     if (!packed)
         return 0;
-    rgb32_pack(packed, drow, dslice, src, srow, sslice, wd, rows, slices, t.alpha_bits);
+    rgb32_pack(packed + back, drow, dslice, src, srow, sslice, wd, rows, slices,
+               t.alpha_bits);
     if (has_flags)
         ((update1_fn)dxcts_real_vtable(w)[SLOT(ID3D11DeviceContext1Vtbl, UpdateSubresource1)])(
             real, dst, sub, box, packed, (UINT)drow, (UINT)dslice, flags);
