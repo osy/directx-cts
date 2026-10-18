@@ -3291,7 +3291,8 @@ static HRESULT create_view(void *self, int slot, ID3D11Resource *res, const void
     UINT alpha;
 
     res = unwrap(res);
-    if (desc && dm_knob_rgb32() && rgb32_twin(*(const DXGI_FORMAT *)desc, &twin, &alpha))
+    if (desc && dm_knob_rgb32() && rgb32_twin(*(const DXGI_FORMAT *)desc, &twin, &alpha)
+        && rgb32_tagged(res, NULL))
     {
         unsigned char copy[sizeof(D3D11_UNORDERED_ACCESS_VIEW_DESC1)
                            > sizeof(D3D11_SHADER_RESOURCE_VIEW_DESC1)
