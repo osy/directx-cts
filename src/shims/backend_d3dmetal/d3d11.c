@@ -1230,6 +1230,19 @@ static int copy_resource_bc_to_uncompressed(ID3D11Device *dev, ID3D11DeviceConte
     return 1;
 }
 
+/* D3D11 allows no destination box on a depth-stencil resource: the runtime drops an
+ * UpdateSubresource that names one, even a box covering the whole subresource.  A box
+ * that covers it is therefore passed as NULL. */
+static const D3D11_BOX *ds_box_or_null(const ds_texture *t, UINT sub, const D3D11_BOX *box)
+{
+    UINT mip = sub % t->shape.mips;
+
+    if (box->left == 0 && box->top == 0 && box->right == mip_dim(t->shape.width, mip)
+        && box->bottom == mip_dim(t->shape.height, mip))
+        return NULL;
+    return box;
+}
+
 /* A copy out of a staging depth-stencil texture whose bytes are shadowed is served as
  * an UpdateSubresource of those bytes (which rewrites the stencil); a copy INTO such a
  * staging texture invalidates its shadow.  1 when the copy was served here. */
@@ -1285,7 +1298,7 @@ static int copy_ds_shadowed(dm_device *dw, ID3D11DeviceContext *ctx, ID3D11Resou
             continue;
         dbox.left = whole ? 0 : x; dbox.top = whole ? 0 : y; dbox.front = 0;
         dbox.right = dbox.left + (r - l); dbox.bottom = dbox.top + (b - t); dbox.back = 1;
-        ds_update(dw, ctx, dst, &dt, ds, &dbox,
+        ds_update(dw, ctx, dst, &dt, ds, ds_box_or_null(&dt, ds, &dbox),
                   shadow + ds_sub_offset(&st, ss) + (size_t)t * rp + (size_t)l * st.texel,
                   (UINT)rp);
     }
