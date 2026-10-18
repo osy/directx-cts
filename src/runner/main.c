@@ -24,7 +24,9 @@
 #include "../common/knob.h"
 
 #define MAX_BINARIES 256
-#define MAX_CASES 262144
+/* Per binary.  WGF11Shader5x alone runs 339,622 cases; at 2^18 it was silently cut to
+ * 262,144 and every later group lost its records. */
+#define MAX_CASES (1 << 22)
 /*
  * Sized from measurement, not guessed.  Every hang this suite used to have is fixed,
  * so a timeout now means the host is pathologically slow at something - which is worth
@@ -133,7 +135,9 @@ typedef struct
 
 typedef struct
 {
-    char name[512];
+    /* Interned: a group's cases all carry its name, and a copy per record made a
+     * whole-run report of a million cases cost gigabytes. */
+    const char *name;
     /* The process that logged it.  A test may spawn helpers, and they inherit
      * DXCTS_EVENTS and the proxy, so two processes can have a case of the same name
      * open at once; pairing on the name alone lets one close the other's. */
@@ -628,6 +632,49 @@ static int selected(const catalog_entry *e, const options *o)
  * Each start/end pair is therefore its own record, and an end completes the most
  * recent open record with a matching name from the same process.
  */
+/* Case names repeat (a WGF group logs every case under its own name), so each distinct
+ * one is stored once for the life of the run. */
+static const char *intern(const char *name)
+{
+    static char **table;
+    static size_t capacity, used;
+    size_t h = 5381, i;
+
+    if (used * 2 >= capacity)
+    {
+        size_t want = capacity ? capacity * 2 : 4096, j;
+        char **grown = calloc(want, sizeof(*grown));
+
+        if (!grown)
+            return NULL;
+        for (j = 0; j < capacity; j++)
+        {
+            size_t k = 5381;
+            const char *t;
+
+            if (!table[j])
+                continue;
+            for (t = table[j]; *t; t++)
+                k = k * 33 + (unsigned char)*t;
+            for (k &= want - 1; grown[k]; k = (k + 1) & (want - 1))
+                ;
+            grown[k] = table[j];
+        }
+        free(table);
+        table = grown;
+        capacity = want;
+    }
+    for (i = 0; name[i]; i++)
+        h = h * 33 + (unsigned char)name[i];
+    for (h &= capacity - 1; table[h]; h = (h + 1) & (capacity - 1))
+        if (!strcmp(table[h], name))
+            return table[h];
+    table[h] = _strdup(name);
+    if (table[h])
+        used++;
+    return table[h];
+}
+
 static case_record *open_case(run_record *r, const char *name, unsigned long pid)
 {
     case_record *c;
@@ -656,7 +703,13 @@ static case_record *open_case(run_record *r, const char *name, unsigned long pid
     c = &r->cases[r->case_count++];
     memset(c, 0, sizeof(*c));
     c->pid = pid;
-    snprintf(c->name, sizeof(c->name), "%s", name);
+    c->name = intern(name);
+    if (!c->name)
+    {
+        r->case_count--;
+        r->truncated = 1;
+        return NULL;
+    }
     return c;
 }
 
