@@ -107,6 +107,30 @@ typedef struct
     long long timeout_s;
 } catalog_entry;
 
+#define MAX_EXCLUSIONS 512
+
+typedef struct exclusion
+{
+    char binary[128];
+    char harness[16];
+    char group[256];
+    char cases[4096];
+    char reason[2048];
+    int line;
+    /* The binary was selected this run, and the entry did or did not apply to
+     * anything in it: an entry whose binary ran without it matching is stale. */
+    int binary_seen;
+    int matched;
+} exclusion;
+
+/* What a run recorded about the exclusions it applied, so its counts explain
+ * themselves. */
+typedef struct
+{
+    char group[256];
+    const exclusion *entry;
+} applied_exclusion;
+
 typedef struct
 {
     char name[512];
@@ -178,6 +202,12 @@ typedef struct
     group_result *groups;
     int group_count;
     int group_capacity;
+    /* The entry that kept the whole binary out of the run, or what it kept out of
+     * the binary: whole groups, and cases within the groups that did run. */
+    const struct exclusion *excluded;
+    applied_exclusion *applied;
+    int applied_count;
+    int applied_capacity;
 } run_record;
 
 static catalog_entry g_catalog[MAX_BINARIES];
@@ -219,6 +249,7 @@ typedef struct
     int no_patches;
     int d3d11on12;
     const char *backend;
+    const char *exclusion;
 } options;
 
 static void usage(void)
@@ -267,6 +298,10 @@ static void usage(void)
         "  --backend NAME     apply the compatibility layer for this host D3D\n"
         "                     implementation (dxcts_backend_NAME.dll beside the shims;\n"
         "                     d3dmetal); off unless named, and recorded in the report\n"
+        "  --exclusion LIST   leave out what LIST names: a path, or the name of a list\n"
+        "                     in suites\\exclusions beside dxcts (warp, d3dmetal, ...);\n"
+        "                     every entry carries its reason, and the report lists\n"
+        "                     what was left out and why\n"
         "  --no-patches       disable every shim workaround, to measure what one is\n"
         "                     worth; individual ones have their own DXCTS_* knobs\n",
         stderr);
@@ -337,6 +372,234 @@ static const char *base_name(const char *path)
     if (fwd > slash)
         slash = fwd;
     return slash ? slash + 1 : path;
+}
+
+/* --- exclusions --- */
+
+/*
+ * Tests known to wedge, crash or otherwise break a run on one implementation, kept out
+ * of it so that one command runs everything else and gives the same answer twice.  One
+ * file per implementation, one flat JSON object per line like the catalog:
+ *
+ *   {"binary":"WGF11Foo.exe","group":"Foo\\Bar","cases":"12-15,40","reason":"..."}
+ *
+ * binary may be replaced or narrowed by harness, naming a whole framework family that
+ * cannot run on the implementation.  group absent excludes the whole binary; cases absent, the whole group.  binary and
+ * group take * and ? wildcards, and a WGF group also covers everything under it, as
+ * the framework's own "!Group" does.  cases is the WGF case numbers the framework
+ * prints, or for TAEF and gtest the method or test names within the group, comma
+ * separated.  Every line must say why: a line without a reason is refused, so the list
+ * cannot grow entries nobody can justify removing.
+ *
+ * Fixing the harness is preferred to adding a line here; a line is what is left when
+ * the fault is the implementation's and cannot be survived.
+ */
+
+static exclusion g_exclusions[MAX_EXCLUSIONS];
+static int g_exclusion_count;
+static char g_exclusion_path[MAX_PATH];
+
+static const char *const k_exclusion_keys[] = {
+    "binary", "harness", "group", "cases", "reason", "evidence",
+};
+
+/* Case-insensitive, * and ? only: names on both sides are Windows file names and
+ * framework paths, neither of which is case-sensitive. */
+static int wildcard_match(const char *pattern, const char *text)
+{
+    const char *star = NULL, *resume = NULL;
+
+    while (*text)
+    {
+        if (*pattern == '*')
+        {
+            star = pattern++;
+            resume = text;
+        }
+        else if (*pattern == '?'
+                 || tolower((unsigned char)*pattern) == tolower((unsigned char)*text))
+        {
+            pattern++;
+            text++;
+        }
+        else if (star)
+        {
+            pattern = star + 1;
+            text = ++resume;
+        }
+        else
+            return 0;
+    }
+    while (*pattern == '*')
+        pattern++;
+    return !*pattern;
+}
+
+/* Whether an entry names this binary: by name, by harness family, or both. */
+static int exclusion_names_binary(const struct exclusion *x, const catalog_entry *e)
+{
+    return wildcard_match(x->binary, e->binary)
+        && (!x->harness[0] || !strcmp(x->harness, e->harness));
+}
+
+static int has_wildcard(const char *s)
+{
+    return strpbrk(s, "*?") != NULL;
+}
+
+/*
+ * A bare name ("warp") is a list staged beside dxcts in suites\exclusions; anything with
+ * a separator or an extension is a path.
+ */
+static void resolve_exclusion_path(const char *arg, char *out, size_t cap)
+{
+    char exe[MAX_PATH];
+    char *slash;
+
+    if (strpbrk(arg, "\\/.:") || !GetModuleFileNameA(NULL, exe, MAX_PATH))
+    {
+        snprintf(out, cap, "%s", arg);
+        return;
+    }
+    slash = strrchr(exe, '\\');
+    if (slash)
+        *slash = 0;
+    snprintf(out, cap, "%s\\suites\\exclusions\\%s.jsonl", exe, arg);
+}
+
+static int load_exclusions(const char *arg)
+{
+    char line[16384];
+    FILE *fh;
+    int lineno = 0, ok = 1;
+
+    resolve_exclusion_path(arg, g_exclusion_path, sizeof(g_exclusion_path));
+    fh = fopen(g_exclusion_path, "r");
+    if (!fh)
+    {
+        fprintf(stderr, "dxcts: cannot open exclusion list %s\n", g_exclusion_path);
+        return 0;
+    }
+    while (fgets(line, sizeof(line), fh))
+    {
+        json_line parsed;
+        char err[128];
+        exclusion *x;
+        int k, j;
+
+        lineno++;
+        /* fgets would hand the rest of a longer line over as the next one */
+        if (!strchr(line, '\n') && !feof(fh))
+        {
+            fprintf(stderr, "dxcts: %s:%d: line longer than %d bytes\n",
+                    g_exclusion_path, lineno, (int)sizeof(line) - 2);
+            ok = 0;
+            break;
+        }
+        if (line[0] == '\n' || line[0] == '\r' || line[0] == '#')
+            continue;
+        if (!json_parse_line(line, &parsed, err, sizeof(err)))
+        {
+            fprintf(stderr, "dxcts: %s:%d: %s\n", g_exclusion_path, lineno, err);
+            ok = 0;
+            continue;
+        }
+        /* An unknown key is a misspelt one, and a misspelt "group" would silently
+         * widen the entry to the whole binary. */
+        for (k = 0; k < parsed.count; k++)
+        {
+            for (j = 0; j < (int)(sizeof(k_exclusion_keys) / sizeof(k_exclusion_keys[0])); j++)
+                if (!strcmp(parsed.fields[k].key, k_exclusion_keys[j]))
+                    break;
+            if (j == (int)(sizeof(k_exclusion_keys) / sizeof(k_exclusion_keys[0])))
+            {
+                fprintf(stderr, "dxcts: %s:%d: unknown key \"%s\"\n", g_exclusion_path,
+                        lineno, parsed.fields[k].key);
+                ok = 0;
+            }
+        }
+        if (g_exclusion_count >= MAX_EXCLUSIONS)
+        {
+            fprintf(stderr, "dxcts: %s holds more than %d exclusions\n",
+                    g_exclusion_path, MAX_EXCLUSIONS);
+            ok = 0;
+            break;
+        }
+        x = &g_exclusions[g_exclusion_count];
+        memset(x, 0, sizeof(*x));
+        x->line = lineno;
+        snprintf(x->binary, sizeof(x->binary), "%s", json_get(&parsed, "binary", "*"));
+        snprintf(x->harness, sizeof(x->harness), "%s", json_get(&parsed, "harness", ""));
+        snprintf(x->group, sizeof(x->group), "%s", json_get(&parsed, "group", ""));
+        snprintf(x->cases, sizeof(x->cases), "%s", json_get(&parsed, "cases", ""));
+        snprintf(x->reason, sizeof(x->reason), "%s", json_get(&parsed, "reason", ""));
+        if (!json_get(&parsed, "binary", NULL) && !x->harness[0])
+        {
+            fprintf(stderr, "dxcts: %s:%d: an exclusion needs a binary or a harness\n",
+                    g_exclusion_path, lineno);
+            ok = 0;
+        }
+        if (!x->reason[0])
+        {
+            fprintf(stderr, "dxcts: %s:%d: an exclusion needs a reason\n",
+                    g_exclusion_path, lineno);
+            ok = 0;
+        }
+        if (x->cases[0] && !x->group[0])
+        {
+            fprintf(stderr, "dxcts: %s:%d: cases needs a group\n", g_exclusion_path,
+                    lineno);
+            ok = 0;
+        }
+        g_exclusion_count++;
+    }
+    fclose(fh);
+    return ok;
+}
+
+/* The entry excluding this whole binary, if one does. */
+static exclusion *binary_exclusion(const catalog_entry *e)
+{
+    int i;
+
+    for (i = 0; i < g_exclusion_count; i++)
+        if (!g_exclusions[i].group[0] && exclusion_names_binary(&g_exclusions[i], e))
+            return &g_exclusions[i];
+    return NULL;
+}
+
+static int exclusion_covers_group(const exclusion *x, const catalog_entry *e,
+                                  const char *group)
+{
+    size_t len = strlen(x->group);
+
+    if (!x->group[0] || !exclusion_names_binary(x, e))
+        return 0;
+    if (wildcard_match(x->group, group))
+        return 1;
+    /* "!Group" in the WGF framework takes the subtree under it, so the entry does too */
+    return !strcmp(e->harness, "wgf") && !_strnicmp(x->group, group, len)
+        && group[len] == '\\';
+}
+
+/* The entry excluding this whole group, if one does. */
+static exclusion *group_exclusion(const catalog_entry *e, const char *group)
+{
+    int i;
+
+    for (i = 0; i < g_exclusion_count; i++)
+        if (!g_exclusions[i].cases[0] && exclusion_covers_group(&g_exclusions[i], e, group))
+            return &g_exclusions[i];
+    return NULL;
+}
+
+static void mark_binary_seen(const catalog_entry *e)
+{
+    int i;
+
+    for (i = 0; i < g_exclusion_count; i++)
+        if (exclusion_names_binary(&g_exclusions[i], e))
+            g_exclusions[i].binary_seen = 1;
 }
 
 static int selected(const catalog_entry *e, const options *o)
@@ -813,6 +1076,7 @@ static void append(char *cmd, size_t cap, const char *fmt, ...)
  */
 #define SELECTOR_SAMPLE 0x1
 #define SELECTOR_GROUP  0x2
+#define SELECTOR_EXCLUSION 0x4
 
 static void selector_names(int mask, char *out, size_t cap)
 {
@@ -822,6 +1086,127 @@ static void selector_names(int mask, char *out, size_t cap)
     if (mask & SELECTOR_GROUP)
         snprintf(out + strlen(out), cap - strlen(out), "%sgroup",
                  out[0] ? "," : "");
+    if (mask & SELECTOR_EXCLUSION)
+        snprintf(out + strlen(out), cap - strlen(out), "%sexclusion",
+                 out[0] ? "," : "");
+}
+
+/*
+ * Whether an entry with a group says anything about a process selecting `sel` (NULL:
+ * the whole binary).  A group-level entry covering `sel` itself never reaches here:
+ * run_one leaves such a group out instead of spawning it.
+ */
+static int exclusion_applies(const exclusion *x, const catalog_entry *e, const char *sel)
+{
+    size_t len;
+
+    if (!x->group[0] || !exclusion_names_binary(x, e))
+        return 0;
+    if (!sel)
+        return 1;
+    if (exclusion_covers_group(x, e, sel))
+        return x->cases[0] != 0;
+    /* an entry for a group under the one selected (a --group naming a parent) */
+    len = strlen(sel);
+    return !strcmp(e->harness, "wgf") && !_strnicmp(x->group, sel, len)
+        && x->group[len] == '\\';
+}
+
+/* Each comma-separated item of an entry's cases, trimmed. */
+static int next_item(const char **p, char *out, size_t cap)
+{
+    const char *s = *p, *end;
+    size_t n;
+
+    while (*s == ' ' || *s == ',')
+        s++;
+    if (!*s)
+        return 0;
+    end = strchr(s, ',');
+    if (!end)
+        end = s + strlen(s);
+    n = (size_t)(end - s);
+    while (n && s[n - 1] == ' ')
+        n--;
+    if (n >= cap)
+        n = cap - 1;
+    memcpy(out, s, n);
+    out[n] = 0;
+    *p = end;
+    return 1;
+}
+
+/*
+ * The exclusions, in the spelling of the harness that has to honour them.  WGF takes
+ * "!Group" and "!Group:1-3,7" as positionals and neither runs nor logs what they name;
+ * TAEF takes a /select query; gtest a negative --gtest_filter.  Returns the selectors
+ * that could not be expressed, which the report names rather than running them quietly.
+ */
+static int append_exclusions(char *cmd, size_t cap, const catalog_entry *e,
+                             const char *sel, char *neg, size_t neg_cap)
+{
+    int i, ignored = 0;
+
+    neg[0] = 0;
+    for (i = 0; i < g_exclusion_count; i++)
+    {
+        exclusion *x = &g_exclusions[i];
+        const char *p = x->cases;
+        char item[256];
+
+        if (!exclusion_applies(x, e, sel))
+            continue;
+        if (!strcmp(e->harness, "wgf"))
+        {
+            /* The framework has no wildcards; a wildcard entry is matched against
+             * the listed groups instead, which only a per-group run has. */
+            const char *g = has_wildcard(x->group) ? sel : x->group;
+
+            if (!g || (sel && has_wildcard(x->group) && !exclusion_covers_group(x, e, sel)))
+            {
+                ignored |= SELECTOR_EXCLUSION;
+                continue;
+            }
+            append(cmd, cap, x->cases[0] ? " \"!%s:%s\"" : " \"!%s\"", g, x->cases);
+            x->matched = 1;
+        }
+        else if (!strcmp(e->harness, "taef"))
+        {
+            /* a TAEF group is a class; its cases are method names under it */
+            if (!x->cases[0])
+                snprintf(neg + strlen(neg), neg_cap - strlen(neg),
+                         " and not(@Name='%s::*')", x->group);
+            else
+                while (next_item(&p, item, sizeof(item)))
+                    snprintf(neg + strlen(neg), neg_cap - strlen(neg),
+                             " and not(@Name='%s::%s')", sel ? sel : x->group, item);
+            x->matched = 1;
+        }
+        else if (!strcmp(e->harness, "gtest"))
+        {
+            /* a gtest group is "Suite.*"; its cases are test names in the suite */
+            if (!x->cases[0])
+                snprintf(neg + strlen(neg), neg_cap - strlen(neg), "%s%s",
+                         neg[0] ? ":" : "", x->group);
+            else
+            {
+                char suite[256];
+                const char *base = sel ? sel : x->group;
+                size_t n = strlen(base);
+
+                if (n >= 2 && !strcmp(base + n - 2, ".*"))
+                    n -= 2;
+                snprintf(suite, sizeof(suite), "%.*s", (int)n, base);
+                while (next_item(&p, item, sizeof(item)))
+                    snprintf(neg + strlen(neg), neg_cap - strlen(neg), "%s%s.%s",
+                             neg[0] ? ":" : "", suite, item);
+            }
+            x->matched = 1;
+        }
+        else
+            ignored |= SELECTOR_EXCLUSION;      /* wgf9: no group tree to name */
+    }
+    return ignored;
 }
 
 static int build_command(char *cmd, size_t cap, const catalog_entry *e,
@@ -829,6 +1214,7 @@ static int build_command(char *cmd, size_t cap, const catalog_entry *e,
                          const char *group)
 {
     int ignored = 0;
+    char neg[4096];
 
     cmd[0] = 0;
     if (strcmp(e->harness, "taef") == 0)
@@ -846,7 +1232,11 @@ static int build_command(char *cmd, size_t cap, const catalog_entry *e,
          * the console instead - while the .wtl.trace it writes runs to over 100 MB
          * for a single class and filled the test machine's disk mid-sweep. */
         append(cmd, cap, "TE.exe \"%s\"%s", e->binary, dxcts_wine() ? " /inproc" : "");
-        if (group)
+        ignored |= append_exclusions(cmd, cap, e, group, neg, sizeof(neg));
+        if (neg[0])
+            /* " and not(...)" each; the leading "and" pairs with the selection */
+            append(cmd, cap, " /select:\"(@Name='%s::*')%s\"", group ? group : "*", neg);
+        else if (group)
             append(cmd, cap, " /name:%s::*", group);
         /* TAEF selects by name, not by proportion: there is no -Random equivalent. */
         if (o->sample)
@@ -856,7 +1246,10 @@ static int build_command(char *cmd, size_t cap, const catalog_entry *e,
     {
         append(cmd, cap, "\"%s\" --gtest_output=json:%s\\%s.json",
                e->binary, logdir, tag);
-        if (group)
+        ignored |= append_exclusions(cmd, cap, e, group, neg, sizeof(neg));
+        if (neg[0])
+            append(cmd, cap, " --gtest_filter=%s-%s", group ? group : "*", neg);
+        else if (group)
             append(cmd, cap, " --gtest_filter=%s", group);
         if (o->sample)
             ignored |= SELECTOR_SAMPLE;
@@ -874,6 +1267,8 @@ static int build_command(char *cmd, size_t cap, const catalog_entry *e,
             else
                 ignored |= SELECTOR_GROUP;
         }
+        /* Exclusions are positionals too, after the selection they narrow. */
+        ignored |= append_exclusions(cmd, cap, e, group, neg, sizeof(neg));
         /* The framework's option parser takes the rest of the token as the value and
          * does not strip quotes, so switch values are passed bare.  logdir is kept
          * relative and space-free for that reason. */
@@ -1415,7 +1810,7 @@ static int spawn_test(const catalog_entry *e, const options *o, const char *logd
                       const char *tag, const char *group, run_record *out)
 {
     long long mark;
-    char cmd[2048], events[MAX_PATH], child_out[MAX_PATH], child_err[MAX_PATH];
+    char cmd[8192], events[MAX_PATH], child_out[MAX_PATH], child_err[MAX_PATH];
     HANDLE out_handle, err_handle;
     SECURITY_ATTRIBUTES inherit = { sizeof(inherit), NULL, TRUE };
     STARTUPINFOA si;
@@ -1431,6 +1826,14 @@ static int spawn_test(const catalog_entry *e, const options *o, const char *logd
 
     out->selectors_ignored |= build_command(cmd, sizeof(cmd), e, o, logdir, tag,
                                             group);
+    /* A cut-off command line would run with half its exclusions, or worse, a
+     * truncated selector naming a broader group. */
+    if (strlen(cmd) >= sizeof(cmd) - 1)
+    {
+        fprintf(stderr, "dxcts: command line for %s is too long\n", e->binary);
+        out->exit_code = (DWORD)-1;
+        return 0;
+    }
 
     /*
      * stdout and stderr go to separate files, and it is not only tidiness: TE.exe
@@ -1739,6 +2142,34 @@ static void collect_binary_reasons(run_record *out, const char *logdir,
     out->reason_count = collect_reasons(log, out->reasons);
 }
 
+static void add_applied(run_record *r, const char *group, const exclusion *x)
+{
+    if (r->applied_count >= r->applied_capacity)
+    {
+        int want = r->applied_capacity ? r->applied_capacity * 2 : 16;
+        applied_exclusion *grown = realloc(r->applied, (size_t)want * sizeof(*grown));
+
+        if (!grown)
+            return;
+        r->applied = grown;
+        r->applied_capacity = want;
+    }
+    snprintf(r->applied[r->applied_count].group,
+             sizeof(r->applied[0].group), "%s", group);
+    r->applied[r->applied_count++].entry = x;
+}
+
+/* The case-level entries a process selecting `sel` was given, for the report. */
+static void record_case_exclusions(run_record *r, const catalog_entry *e, const char *sel)
+{
+    int i;
+
+    for (i = 0; i < g_exclusion_count; i++)
+        if (exclusion_applies(&g_exclusions[i], e, sel)
+            && !(!sel && !strcmp(e->harness, "wgf") && has_wildcard(g_exclusions[i].group)))
+            add_applied(r, sel ? sel : g_exclusions[i].group, &g_exclusions[i]);
+}
+
 static int run_one(const catalog_entry *e, const options *o, const char *logdir,
                    run_record *out)
 {
@@ -1756,7 +2187,16 @@ static int run_one(const catalog_entry *e, const options *o, const char *logdir,
         || (strcmp(e->harness, "wgf") && strcmp(e->harness, "taef")
             && strcmp(e->harness, "gtest")))
     {
+        exclusion *x = o->group ? group_exclusion(e, o->group) : NULL;
+
+        if (x)
+        {
+            x->matched = 1;
+            add_applied(out, o->group, x);
+            return 1;
+        }
         tag_of(e, NULL, tag, sizeof(tag));
+        record_case_exclusions(out, e, o->group);
         ok = spawn_test(e, o, logdir, tag, o->group, out);
         out->suspect_pass = tainted_passes(out);
         out->slow = o->slow_s && out->seconds > (double)o->slow_s;
@@ -1768,6 +2208,7 @@ static int run_one(const catalog_entry *e, const options *o, const char *logdir,
     if (count <= 0)
     {
         tag_of(e, NULL, tag, sizeof(tag));
+        record_case_exclusions(out, e, NULL);
         ok = spawn_test(e, o, logdir, tag, NULL, out);
         out->suspect_pass = tainted_passes(out);
         out->slow = o->slow_s && out->seconds > (double)o->slow_s;
@@ -1780,7 +2221,15 @@ static int run_one(const catalog_entry *e, const options *o, const char *logdir,
     for (i = 0; i < count; i++)
     {
         run_record part;
+        exclusion *x = group_exclusion(e, groups[i]);
 
+        if (x)
+        {
+            x->matched = 1;
+            add_applied(out, groups[i], x);
+            continue;
+        }
+        record_case_exclusions(out, e, groups[i]);
         memset(&part, 0, sizeof(part));
         part.entry = (catalog_entry *)e;
         tag_of(e, groups[i], tag, sizeof(tag));
@@ -1970,6 +2419,7 @@ static void write_report(FILE *fh, run_record *runs, int count, const options *o
     long long totals[VERDICT_COUNT] = { 0 };
     long long total_cases = 0, executed = 0, all_fixtures = 0, all_failed_fixtures = 0;
     long long all_host_errors = 0, suspect_pass = 0, slow_groups = 0;
+    long long excluded_binaries = 0, excluded_groups = 0, excluded_case_sets = 0;
     json_writer w;
     int i, j;
 
@@ -1993,6 +2443,8 @@ static void write_report(FILE *fh, run_record *runs, int count, const options *o
     json_bool(&w, "no_patches", o->no_patches);
     json_bool(&w, "d3d11on12", o->d3d11on12);
     json_str(&w, "backend", o->backend ? o->backend : "");
+    json_str(&w, "exclusion", o->exclusion ? g_exclusion_path : NULL);
+    json_int(&w, "exclusion_entries", g_exclusion_count);
     json_object_end(&w);
 
     json_array_begin(&w, "binaries");
@@ -2015,6 +2467,39 @@ static void write_report(FILE *fh, run_record *runs, int count, const options *o
             json_bool(&w, "slow", 1);
         if (r->truncated)
             json_bool(&w, "cases_truncated", 1);
+        if (r->excluded)
+        {
+            json_object_begin(&w, "excluded");
+            json_str(&w, "reason", r->excluded->reason);
+            json_int(&w, "line", r->excluded->line);
+            json_object_end(&w);
+            excluded_binaries++;
+        }
+        if (r->applied_count)
+        {
+            int k;
+
+            /* What was left out of a binary that did run: whole groups, which were
+             * never spawned, and cases the groups that ran were told to skip. */
+            json_array_begin(&w, "exclusions");
+            for (k = 0; k < r->applied_count; k++)
+            {
+                const exclusion *x = r->applied[k].entry;
+
+                json_object_begin(&w, NULL);
+                json_str(&w, "group", r->applied[k].group);
+                if (x->cases[0])
+                    json_str(&w, "cases", x->cases);
+                json_str(&w, "reason", x->reason);
+                json_int(&w, "line", x->line);
+                json_object_end(&w);
+                if (x->cases[0])
+                    excluded_case_sets++;
+                else
+                    excluded_groups++;
+            }
+            json_array_end(&w);
+        }
         if (r->selectors_ignored)
         {
             char names[64];
@@ -2168,7 +2653,29 @@ static void write_report(FILE *fh, run_record *runs, int count, const options *o
     json_int(&w, "slow_groups", slow_groups);
     json_int(&w, "host_validation_errors", all_host_errors);
     json_int(&w, "pass_in_groups_with_host_errors", suspect_pass);
+    json_int(&w, "excluded_binaries", excluded_binaries);
+    json_int(&w, "excluded_groups", excluded_groups);
+    json_int(&w, "excluded_case_sets", excluded_case_sets);
     json_object_end(&w);
+
+    /* An entry whose binary ran without it applying to anything names a group or
+     * case that no longer exists, and only lengthens the list. */
+    json_array_begin(&w, "stale_exclusions");
+    for (i = 0; i < g_exclusion_count; i++)
+    {
+        const exclusion *x = &g_exclusions[i];
+
+        if (!x->binary_seen || x->matched)
+            continue;
+        json_object_begin(&w, NULL);
+        json_int(&w, "line", x->line);
+        json_str(&w, "binary", x->binary);
+        json_str(&w, "harness", x->harness[0] ? x->harness : NULL);
+        json_str(&w, "group", x->group[0] ? x->group : NULL);
+        json_str(&w, "cases", x->cases[0] ? x->cases : NULL);
+        json_object_end(&w);
+    }
+    json_array_end(&w);
 
     json_object_end(&w);
     fputc('\n', fh);
@@ -2259,6 +2766,8 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "--per-group")) o.per_group = 1;
         else if (!strcmp(argv[i], "--11on12")) o.d3d11on12 = 1;
         else if (!strcmp(argv[i], "--backend")) o.backend = arg_value(argc, argv, &i);
+        else if (!strcmp(argv[i], "--exclusion"))
+            o.exclusion = arg_value(argc, argv, &i);
         else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h"))
         {
             usage();
@@ -2276,6 +2785,8 @@ int main(int argc, char **argv)
     SetEnvironmentVariableA("DXCTS_BACKEND", o.backend);
 
     if (!load_catalog(o.catalog))
+        return 1;
+    if (o.exclusion && !load_exclusions(o.exclusion))
         return 1;
 
     if (!strcmp(mode, "run"))
@@ -2304,8 +2815,11 @@ int main(int argc, char **argv)
             const catalog_entry *e = &g_catalog[i];
             if (!selected(e, &o))
                 continue;
-            printf("%-46s %-6s %-12s%s%s\n", e->binary, e->harness, e->api,
-                   e->skip[0] ? "  skip: " : "", e->skip);
+            const exclusion *x = binary_exclusion(e);
+
+            printf("%-46s %-6s %-12s%s%s%s%s\n", e->binary, e->harness, e->api,
+                   e->skip[0] ? "  skip: " : "", e->skip,
+                   x ? "  excluded: " : "", x ? x->reason : "");
             count++;
         }
         fprintf(stderr, "%d of %d binaries selected\n", count, g_catalog_count);
@@ -2343,7 +2857,26 @@ int main(int argc, char **argv)
             fflush(g_progress);
         }
         fflush(stderr);
+        mark_binary_seen(e);
+        if ((runs[count].excluded = binary_exclusion(e)) != NULL)
+        {
+            ((exclusion *)runs[count].excluded)->matched = 1;
+            runs[count].entry = e;
+            if (g_progress)
+            {
+                fprintf(g_progress, " excluded: %s\n", runs[count].excluded->reason);
+                fflush(g_progress);
+            }
+            count++;
+            continue;
+        }
         run_one(e, &o, logdir, &runs[count]);
+        if (g_progress && runs[count].applied_count)
+        {
+            fprintf(g_progress, " (%d exclusion%s applied)", runs[count].applied_count,
+                    runs[count].applied_count == 1 ? "" : "s");
+            fflush(g_progress);
+        }
         if (g_progress)
         {
             fprintf(g_progress, " %d cases, %.1fs%s\n", runs[count].case_count,
@@ -2376,6 +2909,7 @@ int main(int argc, char **argv)
     {
         free(runs[i].cases);
         free(runs[i].groups);
+        free(runs[i].applied);
     }
     free(runs);
     return 0;

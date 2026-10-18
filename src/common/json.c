@@ -124,7 +124,7 @@ static const char *skip_ws(const char *p)
     return p;
 }
 
-static const char *scan_string(const char *p, char *out, size_t cap)
+static const char *scan_string(const char *p, char *out, size_t cap, int *too_long)
 {
     size_t n = 0;
     if (*p != '"')
@@ -152,6 +152,8 @@ static const char *scan_string(const char *p, char *out, size_t cap)
         }
         if (n + 1 < cap)
             out[n++] = c;
+        else
+            *too_long = 1;
     }
     if (*p != '"')
         return NULL;
@@ -180,12 +182,13 @@ int json_parse_line(const char *text, json_line *out, char *err, size_t err_size
     for (;;)
     {
         json_field *f;
+        int too_long = 0;
 
         if (out->count >= JSON_MAX_FIELDS)
             return fail(err, err_size, "too many fields");
         f = &out->fields[out->count];
 
-        p = scan_string(skip_ws(p), f->key, sizeof(f->key));
+        p = scan_string(skip_ws(p), f->key, sizeof(f->key), &too_long);
         if (!p)
             return fail(err, err_size, "expected a key string");
         p = skip_ws(p);
@@ -195,7 +198,7 @@ int json_parse_line(const char *text, json_line *out, char *err, size_t err_size
 
         if (*p == '"')
         {
-            p = scan_string(p, f->value, sizeof(f->value));
+            p = scan_string(p, f->value, sizeof(f->value), &too_long);
             if (!p)
                 return fail(err, err_size, "unterminated string");
         }
@@ -206,12 +209,16 @@ int json_parse_line(const char *text, json_line *out, char *err, size_t err_size
             {
                 if (n + 1 < sizeof(f->value))
                     f->value[n++] = *p;
+                else
+                    too_long = 1;
                 p++;
             }
             f->value[n] = 0;
             if (!n)
                 return fail(err, err_size, "empty value");
         }
+        if (too_long)
+            return fail(err, err_size, "a key or value too long");
 
         out->count++;
         p = skip_ws(p);

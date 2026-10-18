@@ -328,6 +328,54 @@ backend's internals, and the environment gives the same numbers with no code at 
 pipeline that cannot be used, and `WGF11Precision` then stalls after three cases
 rather than aborting. That one still needs the shim below.
 
+### Exclusions
+
+What still wedges, crashes or otherwise breaks a run on a given implementation after
+everything here has been fixed is kept out of it by an **exclusion list**, one per
+implementation, in `suites/exclusions/<name>.jsonl`. With it, one command runs every
+test that can run and gives the same answer twice:
+
+    dxcts run --per-group --src WARP --exclusion warp --out warp.json
+    dxcts run --per-group --backend d3dmetal --exclusion d3dmetal --out neptune.json
+
+A bare name is a list staged beside `dxcts` (staging copies `suites/` whole); anything
+with a separator or extension is a path. Each line is one flat JSON object, like the
+catalog:
+
+    {"binary":"WGF11Foo.exe","group":"Foo\\Bar","cases":"12-15,40","reason":"...","evidence":"..."}
+
+* `binary` alone excludes the binary; `harness` (`wgf`, `wgf9`, `taef`, `gtest`) in
+  place of or alongside it names a whole framework family, for the case where one
+  reason covers every binary of it. `group` narrows it to a group — and, for WGF, the
+  subtree under it, as the framework's own `!Group` does. `cases` narrows it further:
+  WGF case numbers (the number the log prints before each `End:`), or the TAEF method /
+  gtest test names within the group. `binary` and `group` take `*` and `?`.
+* **`reason` is required**, and a line without one is refused, as is any key the runner
+  does not know (a misspelt `group` would otherwise widen the entry to the whole
+  binary). `evidence` is free text: the run, log or stack that showed it.
+* Fix the harness first. A line belongs here only when the fault is the
+  implementation's and cannot be survived — a timeout, a wedge, a process death that
+  takes the group with it. A case that fails is a result, never an exclusion.
+
+How each family is told: WGF takes `!Group` and `!Group:1-3,7` as positionals and
+neither runs nor logs what they name, so the counts are not inflated by skips; TAEF gets
+a `/select` query; gtest a negative `--gtest_filter`. Under `--per-group` an excluded
+group is simply never spawned. A wgf9 (D3D9-era) binary has no group tree, so only a
+whole-binary entry applies to it; anything finer is reported under
+`selectors_ignored` as `exclusion` rather than quietly run, and so is a WGF wildcard
+group in a whole-binary run, since the framework has no wildcards of its own.
+
+The report says what was left out and why: `selection.exclusion` names the list, each
+binary carries `excluded` (the whole binary) or an `exclusions` array (groups not
+spawned, case sets skipped, each with its reason and line), and `totals` counts
+`excluded_binaries`/`excluded_groups`/`excluded_case_sets`. `stale_exclusions` lists the
+entries whose binary ran without them matching anything — a group renamed or gone —
+so the list only ever shrinks. (Staleness is judged under `--per-group`, where the
+runner sees the group list; a whole-binary run hands entries to the framework blind.)
+
+The catalog's `skip` is different: it marks a binary that cannot run on *any*
+implementation (it needs a second adapter, a capture device), and stays there.
+
 ### What the report answers
 
 The report separates **a case that ran and failed** from **one that never ran**. That

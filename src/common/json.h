@@ -31,10 +31,11 @@ void json_bool(json_writer *w, const char *key, int value);
 
 #define JSON_MAX_FIELDS 24
 
+/* A value longer than this is refused, not cut: an exclusion's case list is one. */
 typedef struct
 {
     char key[64];
-    char value[512];
+    char value[4096];
 } json_field;
 
 typedef struct
