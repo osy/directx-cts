@@ -168,6 +168,9 @@ typedef struct group_result
     int altered;            /* draws a workaround suppressed; see the shim */
     int host_errors;        /* host validation failures the run survived */
     int slow;               /* took longer than the reporting threshold */
+    /* WGF case numbers the process died in; the group was resumed after each */
+    char crashed[512];
+    int crash_count;
     /* why this group's cases failed, read back from its log so the report can be
      * analysed without it */
     failure_reason reasons[MAX_REASONS];
@@ -190,6 +193,8 @@ typedef struct
     int suspect_pass;       /* passes recorded while the host reported a failure */
     int slow;               /* whole-binary runs have no group to carry this */
     int selectors_ignored;  /* SELECTOR_*: asked for, and this harness cannot */
+    char crashed[512];      /* WGF case numbers a crash was resumed past */
+    int crash_count;
     /* What TAEF itself reported in its Summary line, so a binary whose console
      * output and case records disagree is visible rather than silently believed. */
     int have_harness_total;
@@ -1209,6 +1214,10 @@ static int append_exclusions(char *cmd, size_t cap, const catalog_entry *e,
     return ignored;
 }
 
+/* Case numbers a resumed WGF group skips: everything up to and including the case the
+ * previous process died in.  See spawn_group. */
+static char g_resume_skip[32];
+
 static int build_command(char *cmd, size_t cap, const catalog_entry *e,
                          const options *o, const char *logdir, const char *tag,
                          const char *group)
@@ -1269,6 +1278,8 @@ static int build_command(char *cmd, size_t cap, const catalog_entry *e,
         }
         /* Exclusions are positionals too, after the selection they narrow. */
         ignored |= append_exclusions(cmd, cap, e, group, neg, sizeof(neg));
+        if (group && g_resume_skip[0])
+            append(cmd, cap, " \"!%s:%s\"", group, g_resume_skip);
         /* The framework's option parser takes the rest of the token as the value and
          * does not strip quotes, so switch values are passed bare.  logdir is kept
          * relative and space-free for that reason. */
@@ -1507,7 +1518,7 @@ static void apply_requests(const catalog_entry *e, const options *o)
 static int capture_listing(const char *cmd_in, const char *logdir, char *path,
                            size_t path_cap)
 {
-    char cmd[1024];
+    char cmd[8192];
     STARTUPINFOA si;
     PROCESS_INFORMATION pi;
     SECURITY_ATTRIBUTES inherit = { sizeof(inherit), NULL, TRUE };
@@ -2142,6 +2153,153 @@ static void collect_binary_reasons(run_record *out, const char *logdir,
     out->reason_count = collect_reasons(log, out->reasons);
 }
 
+/*
+ * Resuming a WGF group past a case that kills its process.
+ *
+ * A crash inside the implementation under test - WARP's pixel-shader JIT faults on some
+ * WGF11Multisample\InputCoverageWithDepth cases, for one - ends the process, and with it
+ * every case after the one that crashed.  Those cases are not the implementation's
+ * failures and should not cost the run; nor should each crashing case need an entry in
+ * an exclusion list.  So the group is started again after it.
+ *
+ * The crashing case cannot be seen directly: the framework logs a case, start and end
+ * together, only when it finishes, so the one that dies leaves no trace in the event
+ * stream or the log.  What can be seen is the last case that finished (the log prints
+ * its number just before its "End:") and the group's full ordered case list (its own
+ * -GenerateCSV).  The case after the last finished one is the one that crashed.  It is
+ * recorded as incomplete, named in the report, and the group restarts with every case
+ * up to it skipped.
+ */
+#define MAX_RESUMES 256
+
+static int crashed_exit(const run_record *r)
+{
+    return !r->timed_out && !r->wedged && r->exit_code >= 0xC0000000u
+        && r->exit_code != (DWORD)-1;
+}
+
+/* The number of the last case the log recorded as finished, or 0. */
+static long last_logged_case(const char *log)
+{
+    char line[512];
+    long prev = -1, last = 0;
+    FILE *fh = open_text(log);
+
+    if (!fh)
+        return 0;
+    while (read_text_line(fh, line, sizeof(line)))
+    {
+        char *p = line, *end;
+        long n;
+
+        while (*p == ' ' || *p == '\t')
+            p++;
+        if (!*p)
+            continue;
+        if (!strncmp(p, "End:", 4))
+        {
+            if (prev > 0)
+                last = prev;
+            continue;
+        }
+        n = strtol(p, &end, 10);
+        while (*end == ' ' || *end == '\t')
+            end++;
+        prev = (end != p && !*end) ? n : -1;
+    }
+    fclose(fh);
+    return last;
+}
+
+/* The first case the group enumerates after `after`, from its -GenerateCSV, or 0. */
+static long next_case(const catalog_entry *e, const options *o, const char *logdir,
+                      const char *tag, const char *group, long after)
+{
+    char cmd[8192], path[MAX_PATH], csv[MAX_PATH], dir[MAX_PATH], line[512];
+    long found = 0;
+    size_t i, n;
+    FILE *fh;
+
+    build_command(cmd, sizeof(cmd), e, o, logdir, tag, group);
+    append(cmd, sizeof(cmd), " -GenerateCSV");
+    if (!capture_listing(cmd, logdir, path, sizeof(path)))
+        return 0;
+    DeleteFileA(path);
+    /* written to the current directory, named after the group with '\' as '_' */
+    if (!GetCurrentDirectoryA(sizeof(dir), dir))
+        return 0;
+    snprintf(csv, sizeof(csv), "%s\\", dir);
+    n = strlen(csv);
+    for (i = 0; group[i] && n + 5 < sizeof(csv); i++)
+        csv[n++] = group[i] == '\\' ? '_' : group[i];
+    snprintf(csv + n, sizeof(csv) - n, ".csv");
+    fh = fopen(csv, "r");
+    if (!fh)
+        return 0;
+    while (read_text_line(fh, line, sizeof(line)))
+    {
+        long num = strtol(line, NULL, 10);
+
+        if (num > after)
+        {
+            found = num;
+            break;
+        }
+    }
+    fclose(fh);
+    DeleteFileA(csv);
+    return found;
+}
+
+static int spawn_group(const catalog_entry *e, const options *o, const char *logdir,
+                       const char *tag, const char *group, run_record *part)
+{
+    char attempt_tag[300];
+    long skipped_to = 0;
+    int ok, resumes = 0;
+
+    g_resume_skip[0] = 0;
+    ok = spawn_test(e, o, logdir, tag, group, part);
+    snprintf(attempt_tag, sizeof(attempt_tag), "%s", tag);
+    /* A sample is drawn afresh by every process, so resuming one would not run the
+     * remainder of the same sample. */
+    while (ok && crashed_exit(part) && !strcmp(e->harness, "wgf") && !o->sample
+           && resumes < MAX_RESUMES)
+    {
+        char log[MAX_PATH];
+        long done, crashed;
+        case_record *c;
+
+        snprintf(log, sizeof(log), "%s\\%s.log", logdir, attempt_tag);
+        done = last_logged_case(log);
+        if (done < skipped_to)
+            done = skipped_to;
+        crashed = next_case(e, o, logdir, tag, group, done);
+        if (!crashed)
+            break;              /* died after its last case: nothing left to run */
+        c = open_case(part, group, 0);
+        if (c)
+            c->executed = 1;    /* started, never ended: incomplete */
+        snprintf(part->crashed + strlen(part->crashed),
+                 sizeof(part->crashed) - strlen(part->crashed), "%s%ld",
+                 part->crashed[0] ? "," : "", crashed);
+        part->crash_count++;
+        if (g_progress)
+        {
+            fprintf(g_progress, "    crash: %s %s case %ld (exit 0x%08lx); resuming after it\n",
+                    e->binary, group, crashed, (unsigned long)part->exit_code);
+            fflush(g_progress);
+        }
+        skipped_to = crashed;
+        snprintf(g_resume_skip, sizeof(g_resume_skip), "1-%ld", crashed);
+        snprintf(attempt_tag, sizeof(attempt_tag), "%s-r%d", tag, ++resumes);
+        part->exit_code = 0;
+        ok = spawn_test(e, o, logdir, attempt_tag, group, part);
+    }
+    g_resume_skip[0] = 0;
+    return ok;
+}
+
 static void add_applied(run_record *r, const char *group, const exclusion *x)
 {
     if (r->applied_count >= r->applied_capacity)
@@ -2197,7 +2355,8 @@ static int run_one(const catalog_entry *e, const options *o, const char *logdir,
         }
         tag_of(e, NULL, tag, sizeof(tag));
         record_case_exclusions(out, e, o->group);
-        ok = spawn_test(e, o, logdir, tag, o->group, out);
+        ok = o->group ? spawn_group(e, o, logdir, tag, o->group, out)
+                      : spawn_test(e, o, logdir, tag, NULL, out);
         out->suspect_pass = tainted_passes(out);
         out->slow = o->slow_s && out->seconds > (double)o->slow_s;
         collect_binary_reasons(out, logdir, tag);
@@ -2233,7 +2392,7 @@ static int run_one(const catalog_entry *e, const options *o, const char *logdir,
         memset(&part, 0, sizeof(part));
         part.entry = (catalog_entry *)e;
         tag_of(e, groups[i], tag, sizeof(tag));
-        if (spawn_test(e, o, logdir, tag, groups[i], &part))
+        if (spawn_group(e, o, logdir, tag, groups[i], &part))
             ok = 1;
 
         out->seconds += part.seconds;
@@ -2243,6 +2402,7 @@ static int run_one(const catalog_entry *e, const options *o, const char *logdir,
             out->exit_code = part.exit_code;
         out->truncated |= part.truncated;
         out->selectors_ignored |= part.selectors_ignored;
+        out->crash_count += part.crash_count;
         out->altered += part.altered;
         out->host_errors += part.host_errors;
         out->suspect_pass += tainted_passes(&part);
@@ -2270,6 +2430,8 @@ static int run_one(const catalog_entry *e, const options *o, const char *logdir,
             g->exit_code = part.exit_code;
             g->altered = part.altered;
             g->host_errors = part.host_errors;
+            snprintf(g->crashed, sizeof(g->crashed), "%s", part.crashed);
+            g->crash_count = part.crash_count;
             g->slow = o->slow_s && part.seconds > (double)o->slow_s;
             {
                 int j, failed = 0;
@@ -2420,6 +2582,7 @@ static void write_report(FILE *fh, run_record *runs, int count, const options *o
     long long total_cases = 0, executed = 0, all_fixtures = 0, all_failed_fixtures = 0;
     long long all_host_errors = 0, suspect_pass = 0, slow_groups = 0;
     long long excluded_binaries = 0, excluded_groups = 0, excluded_case_sets = 0;
+    long long crashes = 0;
     json_writer w;
     int i, j;
 
@@ -2467,6 +2630,11 @@ static void write_report(FILE *fh, run_record *runs, int count, const options *o
             json_bool(&w, "slow", 1);
         if (r->truncated)
             json_bool(&w, "cases_truncated", 1);
+        if (r->crash_count && !r->group_count)
+        {
+            json_int(&w, "crashes", r->crash_count);
+            json_str(&w, "crashed_cases", r->crashed);
+        }
         if (r->excluded)
         {
             json_object_begin(&w, "excluded");
@@ -2543,6 +2711,12 @@ static void write_report(FILE *fh, run_record *runs, int count, const options *o
                 json_int(&w, "altered_draws", r->groups[g].altered);
                 json_int(&w, "host_validation_errors", r->groups[g].host_errors);
                 json_bool(&w, "slow", r->groups[g].slow);
+                if (r->groups[g].crash_count)
+                {
+                    /* the cases the process died in, each resumed past */
+                    json_int(&w, "crashes", r->groups[g].crash_count);
+                    json_str(&w, "crashed_cases", r->groups[g].crashed);
+                }
                 if (r->groups[g].reason_count)
                 {
                     int i;
@@ -2625,6 +2799,7 @@ static void write_report(FILE *fh, run_record *runs, int count, const options *o
             slow_groups++;
         }
         suspect_pass += r->suspect_pass;
+        crashes += r->crash_count;
         for (v = 0; v < VERDICT_COUNT; v++)
             totals[v] += counts[v];
     }
@@ -2653,6 +2828,7 @@ static void write_report(FILE *fh, run_record *runs, int count, const options *o
     json_int(&w, "slow_groups", slow_groups);
     json_int(&w, "host_validation_errors", all_host_errors);
     json_int(&w, "pass_in_groups_with_host_errors", suspect_pass);
+    json_int(&w, "crashed_cases_resumed", crashes);
     json_int(&w, "excluded_binaries", excluded_binaries);
     json_int(&w, "excluded_groups", excluded_groups);
     json_int(&w, "excluded_case_sets", excluded_case_sets);
