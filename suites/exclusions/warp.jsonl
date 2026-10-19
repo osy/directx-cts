@@ -1,0 +1,4 @@
+# Exclusions for the WARP reference arm:
+#   dxcts run --per-group --src WARP --exclusion warp
+# One flat JSON object per line; "reason" is required.  See README "Exclusions".
+{"harness":"wgf9","reason":"D3D9 has no WARP device: on the driver-less reference VM (Microsoft Basic Display only) D3D9 enumerates no adapter, so every D3D9-era framework binary blocks before its first case (\"CD3D::InitD3D9() - GetAdapterCount() returned 0. No display devices available.\").  Direct3DCreate9On12 over an explicit WARP D3D12 device does not help: it too reports 0 adapters and CreateDevice/GetDeviceCaps return D3DERR_NOTAVAILABLE, because D3D9 builds its adapter list from the display outputs.","evidence":"The WARP sample sweep of 2026-10-18 (0 cases for every D3D9-era binary before this entry existed); the D3D9-era framework's own log of Bump under WARP; a probe creating Direct3DCreate9On12 over a WARP D3D12 device"}
