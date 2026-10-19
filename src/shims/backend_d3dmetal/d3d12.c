@@ -647,6 +647,18 @@ static HRESULT WINAPI dev_create_gfx_pso(void *self, const D3D12_GRAPHICS_PIPELI
             return E_INVALIDARG;
         }
     }
+    /* A geometry shader under tessellation: D3DMetal cannot compile the geometry
+     * function, hands Metal a mesh pipeline with no mesh function, and validation aborts
+     * the process when the first draw builds it.  D3D11 drops such a draw; in D3D12 the
+     * combination is fixed at create, so the pipeline state is refused there. */
+    if (dm_knob_draw_guards() && desc && desc->GS.BytecodeLength
+        && (desc->HS.BytecodeLength || desc->DS.BytecodeLength))
+    {
+        dm_count(&dm_counts.refused_creates);
+        if (out)
+            *out = NULL;
+        return E_INVALIDARG;
+    }
     return ((create_gfx_pso_fn)REAL_DEV(self, CreateGraphicsPipelineState))(dxcts_real(self),
                                                                             desc, iid, out);
 }
