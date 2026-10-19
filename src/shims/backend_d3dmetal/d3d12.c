@@ -257,6 +257,184 @@ static HRESULT WINAPI dev_create_cmdlist1(void *self, UINT node, D3D12_COMMAND_L
     return hr;
 }
 
+/* --- command queues --- */
+
+/* Microsoft's runtime reads its own fields out of every list ExecuteCommandLists is
+ * given, so a list wrapped above must reach it as the real object.  The queue is not
+ * wrapped where that can be helped - DXGI and D3D11On12 take queues and look inside
+ * them too - so its vtable slot is patched instead, once per vtable.  Where the vtable
+ * cannot be written (the host implementation under Wine, see comwrap.h) the queue is
+ * wrapped after all (queue_out below). */
+typedef void (WINAPI *execute_fn)(void *, UINT, ID3D12CommandList *const *);
+typedef HRESULT (WINAPI *create_queue_fn)(void *, const D3D12_COMMAND_QUEUE_DESC *,
+                                         const GUID *, void **);
+typedef HRESULT (WINAPI *create_queue1_fn)(void *, const D3D12_COMMAND_QUEUE_DESC *,
+                                          const GUID *, const GUID *, void **);
+
+static const GUID k_iid_queue =
+    { 0x0ec870a6, 0x5d7e, 0x4c22, { 0x8c,0xfc,0x5b,0xaa,0xe0,0x76,0x16,0xed } };
+
+static struct
+{
+    void **vtable;
+    execute_fn real;
+} queue_vtables[8];
+static int queue_vtable_count;
+static SRWLOCK queue_lock = SRWLOCK_INIT;
+
+static execute_fn queue_real_execute(void **vtable)
+{
+    execute_fn real = NULL;
+    int i;
+
+    AcquireSRWLockShared(&queue_lock);
+    for (i = 0; i < queue_vtable_count && !real; i++)
+        if (queue_vtables[i].vtable == vtable)
+            real = queue_vtables[i].real;
+    ReleaseSRWLockShared(&queue_lock);
+    return real;
+}
+
+static void *unwrap_cmdlist(ID3D12CommandList *list)
+{
+    if (list && (*(void ***)list)[0] == (void *)cl_qi)
+        return dxcts_real(list);
+    return list;
+}
+
+static void WINAPI queue_execute(void *self, UINT n, ID3D12CommandList *const *lists)
+{
+    execute_fn real = queue_real_execute(*(void ***)self);
+    ID3D12CommandList *local[64], **unwrapped = local;
+    UINT i;
+
+    if (!real || (n > 64 && !(unwrapped = malloc(n * sizeof(*unwrapped)))))
+        return;
+    for (i = 0; i < n; i++)
+        unwrapped[i] = unwrap_cmdlist(lists[i]);
+    real(self, n, unwrapped);
+    if (unwrapped != local)
+        free(unwrapped);
+}
+
+/* Whether the queue's ExecuteCommandLists now unwraps (patched now or before). */
+static int patch_queue(void *object)
+{
+    void *queue = NULL, **vtable, **slot;
+    HMODULE self;
+    DWORD old;
+    int patched;
+
+    if (FAILED(((dxcts_qi_fn)(*(void ***)object)[0])(object, &k_iid_queue, &queue)))
+        return 0;
+    vtable = *(void ***)queue;
+    slot = &vtable[SLOT(ID3D12CommandQueueVtbl, ExecuteCommandLists)];
+    AcquireSRWLockExclusive(&queue_lock);
+    patched = *slot == (void *)queue_execute;
+    if (!patched
+        && queue_vtable_count < (int)(sizeof(queue_vtables) / sizeof(queue_vtables[0]))
+        && VirtualProtect(slot, sizeof(*slot), PAGE_READWRITE, &old))
+    {
+        /* The patched slot points into this DLL for the rest of the process. */
+        GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
+                           | GET_MODULE_HANDLE_EX_FLAG_PIN, (LPCWSTR)queue_execute, &self);
+        queue_vtables[queue_vtable_count].vtable = vtable;
+        queue_vtables[queue_vtable_count].real = (execute_fn)*slot;
+        queue_vtable_count++;
+        *slot = (void *)queue_execute;
+        VirtualProtect(slot, sizeof(*slot), old, &old);
+        patched = 1;
+    }
+    ReleaseSRWLockExclusive(&queue_lock);
+    release(queue);
+    return patched;
+}
+
+/* Where the slot cannot be patched the queue itself is wrapped, so that lists reach
+ * the host unwrapped all the same: under Wine, D3DMetal's ExecuteCommandLists reads a
+ * wrapped list as its own object and faults on the first one (every D3D12 group with
+ * the layer died that way).  Whatever else takes the queue - DXGI, D3D11On12 - asks
+ * it for an interface first, and every query but the queue's own reaches the real
+ * object. */
+static const dxcts_iface k_queues[] = {
+    { { 0x0ec870a6, 0x5d7e, 0x4c22, { 0x8c,0xfc,0x5b,0xaa,0xe0,0x76,0x16,0xed } },
+      WIDTH(ID3D12CommandQueueVtbl) },
+};
+
+static HRESULT WINAPI queue_qi(void *self, const GUID *iid, void **out)
+{
+    dxcts_wrapper *w = self;
+
+    if (iid && out && dxcts_wrapper_answers(w, iid, k_queues,
+                                            sizeof(k_queues) / sizeof(k_queues[0])))
+    {
+        dxcts_wrapper_addref(w);
+        *out = self;
+        return S_OK;
+    }
+    return ((dxcts_qi_fn)dxcts_real_vtable(self)[0])(dxcts_real(self), iid, out);
+}
+
+static void WINAPI queue_wrapper_execute(void *self, UINT n, ID3D12CommandList *const *lists)
+{
+    execute_fn real = (execute_fn)dxcts_real_vtable(self)[SLOT(ID3D12CommandQueueVtbl,
+                                                                  ExecuteCommandLists)];
+    ID3D12CommandList *local[64], **unwrapped = local;
+    UINT i;
+
+    if (n > 64 && !(unwrapped = malloc(n * sizeof(*unwrapped))))
+        return;
+    for (i = 0; i < n; i++)
+        unwrapped[i] = unwrap_cmdlist(lists[i]);
+    real(dxcts_real(self), n, unwrapped);
+    if (unwrapped != local)
+        free(unwrapped);
+}
+
+static void *queue_out(void *object, const GUID *iid)
+{
+    static int probed_slots;
+    dxcts_wrapper *w;
+
+    if (patch_queue(object) || !iid || !IsEqualGUID(iid, &k_iid_queue)
+        || !dxcts_wrap_supported())
+        return object;
+    w = dxcts_wrap(object, dxcts_widest_slots(object, k_queues,
+                                              sizeof(k_queues) / sizeof(k_queues[0]),
+                                              &probed_slots),
+                   sizeof(*w));
+    if (!w)
+        return object;
+    w->vtable[0] = (void *)queue_qi;
+    w->vtable[1] = (void *)dxcts_wrapper_addref;
+    w->vtable[2] = (void *)dxcts_wrapper_release;
+    DXCTS_INSTALL(w, ID3D12CommandQueueVtbl, ExecuteCommandLists, queue_wrapper_execute);
+    return w;
+}
+
+static HRESULT WINAPI dev_create_queue(void *self, const D3D12_COMMAND_QUEUE_DESC *desc,
+                                       const GUID *iid, void **out)
+{
+    HRESULT hr = ((create_queue_fn)REAL_DEV(self, CreateCommandQueue))(dxcts_real(self), desc,
+                                                                       iid, out);
+
+    if (SUCCEEDED(hr) && out && *out)
+        *out = queue_out(*out, iid);
+    return hr;
+}
+
+static HRESULT WINAPI dev_create_queue1(void *self, const D3D12_COMMAND_QUEUE_DESC *desc,
+                                        const GUID *creator, const GUID *iid, void **out)
+{
+    HRESULT hr = ((create_queue1_fn)dxcts_real_vtable(self)[SLOT(ID3D12Device9Vtbl,
+                                                                  CreateCommandQueue1)])(
+        dxcts_real(self), desc, creator, iid, out);
+
+    if (SUCCEEDED(hr) && out && *out)
+        *out = queue_out(*out, iid);
+    return hr;
+}
+
 /* --- resources --- */
 
 /* A texture-shaped description refused because Metal cannot make it (buffers are
@@ -640,6 +818,8 @@ HRESULT WINAPI dm_d3d12_create_device(dxcts_d3d12_create_fn real, void *adapter,
     INSTALL(ID3D12DeviceVtbl, CreateGraphicsPipelineState, dev_create_gfx_pso);
     INSTALL(ID3D12DeviceVtbl, CreateCommandList, dev_create_cmdlist);
     INSTALL(ID3D12Device4Vtbl, CreateCommandList1, dev_create_cmdlist1);
+    INSTALL(ID3D12DeviceVtbl, CreateCommandQueue, dev_create_queue);
+    INSTALL(ID3D12Device9Vtbl, CreateCommandQueue1, dev_create_queue1);
 #undef INSTALL
     *device = w;
     return hr;
