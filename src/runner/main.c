@@ -1262,7 +1262,7 @@ static int append_exclusions(char *cmd, size_t cap, const catalog_entry *e,
             x->matched = 1;
         }
         else
-            ignored |= SELECTOR_EXCLUSION;      /* wgf9: no group tree to name */
+            ignored |= SELECTOR_EXCLUSION;      /* wgf9: selects cases, never leaves any out */
     }
     return ignored;
 }
@@ -1320,15 +1320,10 @@ static int build_command(char *cmd, size_t cap, const catalog_entry *e,
     {
         /* The group path is positional and must precede the switches. */
         append(cmd, cap, "\"%s\"", e->binary);
+        /* The modern generation selects a group by its path; the D3D9-era one by its
+         * key, as a switch. */
         if (group)
-        {
-            /* Only the modern generation has a group tree to select from; the D3D9-era
-             * one takes numeric case ranges and has none. */
-            if (strcmp(e->harness, "wgf") == 0)
-                append(cmd, cap, " \"%s\"", group);
-            else
-                ignored |= SELECTOR_GROUP;
-        }
+            append(cmd, cap, strcmp(e->harness, "wgf") ? " -%s" : " \"%s\"", group);
         /* Exclusions are positionals too, after the selection they narrow. */
         ignored |= append_exclusions(cmd, cap, e, group, neg, sizeof(neg));
         if (group && g_resume_skip[0])
@@ -1846,6 +1841,158 @@ static int list_groups_gtest(const catalog_entry *e, const char *logdir,
     return capped ? 0 : count;
 }
 
+/*
+ * The D3D9-era framework lists its groups only in its help dialog: -? opens a window
+ * whose rich-edit control reads "Tests available:" and then "-Key: description" per
+ * group, and it waits there for someone to close it.  The text is read out of the
+ * control and the process killed.  A key is what selects the group on the command
+ * line ("-Key", or "-Key:1-50,90-" for case numbers within it).
+ */
+typedef struct
+{
+    DWORD pid;
+    char *text;
+    size_t cap;
+    int found;
+} help_search;
+
+/* Read a line at a time: Wine's rich edit answers WM_GETTEXT with every line break
+ * turned into spaces, which leaves no line to find a group key at the start of, while
+ * EM_GETLINE gives each line as it is shown.  Both are system messages, which Windows
+ * and Wine alike marshal into the other process. */
+static BOOL CALLBACK help_control(HWND hwnd, LPARAM param)
+{
+    help_search *s = (help_search *)param;
+    char cls[64], line[1024];
+    DWORD_PTR lines = 0, got;
+    size_t used = 0;
+    WPARAM i;
+
+    if (!GetClassNameA(hwnd, cls, sizeof(cls)) || _strnicmp(cls, "RichEdit", 8))
+        return TRUE;
+    if (!SendMessageTimeoutA(hwnd, EM_GETLINECOUNT, 0, 0, SMTO_ABORTIFHUNG, 2000, &lines)
+        || !lines)
+        return TRUE;
+    for (i = 0; i < lines; i++)
+    {
+        *(WORD *)line = sizeof(line) - 1;   /* EM_GETLINE's buffer size, in place */
+        got = 0;
+        if (!SendMessageTimeoutA(hwnd, EM_GETLINE, i, (LPARAM)line, SMTO_ABORTIFHUNG, 2000,
+                                 &got))
+            return TRUE;
+        if (got > sizeof(line) - 1)
+            got = sizeof(line) - 1;
+        if (used + got + 2 > s->cap)
+        {
+            size_t cap = s->cap * 2 > used + got + 2 ? s->cap * 2 : used + got + 4096;
+            char *grown = realloc(s->text, cap);
+
+            if (!grown)
+                return TRUE;
+            s->text = grown;
+            s->cap = cap;
+        }
+        memcpy(s->text + used, line, got);
+        used += got;
+        s->text[used++] = '\n';
+    }
+    s->text[used] = 0;
+    s->found = strstr(s->text, "Tests available:") != NULL;
+    return !s->found;
+}
+
+static BOOL CALLBACK help_window(HWND hwnd, LPARAM param)
+{
+    help_search *s = (help_search *)param;
+    DWORD pid = 0;
+
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid == s->pid)
+        EnumChildWindows(hwnd, help_control, param);
+    return !s->found;
+}
+
+static int list_groups_wgf9(const catalog_entry *e, char groups[MAX_GROUPS][256])
+{
+    char cmd[1024];
+    STARTUPINFOA si;
+    PROCESS_INFORMATION pi;
+    help_search s;
+    HANDLE job;
+    DWORD waited = 0;
+    int count = 0, capped = 0;
+    char *line, *end;
+
+    snprintf(cmd, sizeof(cmd), "\"%s\" -?", e->binary);
+    memset(&si, 0, sizeof(si));
+    si.cb = sizeof(si);
+    memset(&pi, 0, sizeof(pi));
+    memset(&s, 0, sizeof(s));
+    job = make_kill_on_close_job();
+    if (!start_process(cmd, FALSE, NULL, &si, &pi))
+    {
+        if (job)
+            CloseHandle(job);
+        return 0;
+    }
+    if (job)
+        AssignProcessToJobObject(job, pi.hProcess);
+    ResumeThread(pi.hThread);
+    s.pid = pi.dwProcessId;
+    while (!s.found && waited < LIST_GROUPS_TIMEOUT_MS
+           && WaitForSingleObject(pi.hProcess, 250) == WAIT_TIMEOUT)
+    {
+        waited += 250;
+        EnumWindows(help_window, (LPARAM)&s);
+    }
+    TerminateProcess(pi.hProcess, 1);
+    WaitForSingleObject(pi.hProcess, 10000);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    if (job)
+        CloseHandle(job);
+    if (!s.found)
+    {
+        free(s.text);
+        return 0;
+    }
+    line = strstr(s.text, "Tests available:");
+    for (line = strchr(line, '\n'); line && *line; line = end)
+    {
+        char *colon;
+        size_t n;
+
+        line++;
+        end = strchr(line, '\n');
+        if (!end)
+            end = line + strlen(line);
+        while (*line == '\r')
+            line++;
+        /* The framework writes its groups at the margin; a test's own options are
+         * indented under them, "-Key:value" (MipGen's -PATTERN:pattern) and "-Key: text"
+         * alike (scenario's -GradientAlpha: ... (default=1.0)), and as a group key one
+         * runs the whole binary. */
+        if (*line == ' ' || *line == '\t')
+            continue;
+        if (!strncmp(line, "Test selection options:", 23))
+            break;
+        if (*line != '-' || !(colon = memchr(line, ':', (size_t)(end - line))))
+            continue;
+        n = (size_t)(colon - line - 1);
+        if (!n || n >= sizeof(groups[0]) || memchr(line, ' ', (size_t)(colon - line)))
+            continue;
+        if (count >= MAX_GROUPS)
+        {
+            capped = 1;
+            break;
+        }
+        memcpy(groups[count], line + 1, n);
+        groups[count++][n] = 0;
+    }
+    free(s.text);
+    return capped ? 0 : count;
+}
+
 static int list_groups(const catalog_entry *e, const char *logdir,
                        char groups[MAX_GROUPS][256])
 {
@@ -1853,6 +2000,8 @@ static int list_groups(const catalog_entry *e, const char *logdir,
         return list_groups_taef(e, logdir, groups);
     if (!strcmp(e->harness, "gtest"))
         return list_groups_gtest(e, logdir, groups);
+    if (!strcmp(e->harness, "wgf9"))
+        return list_groups_wgf9(e, groups);
     return list_groups_wgf(e, logdir, groups);
 }
 
@@ -1928,11 +2077,32 @@ static int host_errors_since(long long mark)
     return count;
 }
 
+/*
+ * Where the D3D9-era framework writes its text log: %USERPROFILE%\\dxlogs\\<binary>.log,
+ * whatever -LogPath and -LogFileName say, overwritten by every process.  Each process's
+ * is moved beside the rest of its output, where the failure reasons are read from.
+ */
+static int wgf9_log_path(const catalog_entry *e, char *out, size_t cap)
+{
+    char profile[MAX_PATH], name[MAX_PATH], *dot;
+    DWORD n = GetEnvironmentVariableA("USERPROFILE", profile, sizeof(profile));
+
+    if (!n || n >= sizeof(profile))
+        return 0;
+    snprintf(name, sizeof(name), "%s", base_name(e->binary));
+    dot = strrchr(name, '.');
+    if (dot)
+        *dot = 0;
+    snprintf(out, cap, "%s\\dxlogs\\%s.log", profile, name);
+    return 1;
+}
+
 static int spawn_test(const catalog_entry *e, const options *o, const char *logdir,
                       const char *tag, const char *group, run_record *out)
 {
     long long mark;
     char cmd[8192], events[MAX_PATH], child_out[MAX_PATH], child_err[MAX_PATH];
+    char wgf9_log[MAX_PATH];
     HANDLE out_handle, err_handle;
     SECURITY_ATTRIBUTES inherit = { sizeof(inherit), NULL, TRUE };
     STARTUPINFOA si;
@@ -1983,6 +2153,11 @@ static int spawn_test(const catalog_entry *e, const options *o, const char *logd
         si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
     }
     memset(&pi, 0, sizeof(pi));
+
+    if (!strcmp(e->harness, "wgf9") && wgf9_log_path(e, wgf9_log, sizeof(wgf9_log)))
+        DeleteFileA(wgf9_log);
+    else
+        wgf9_log[0] = 0;
 
     QueryPerformanceFrequency(&freq);
     mark = host_errors_mark();
@@ -2070,6 +2245,13 @@ static int spawn_test(const catalog_entry *e, const options *o, const char *logd
     QueryPerformanceCounter(&t1);
     out->seconds += (double)(t1.QuadPart - t0.QuadPart) / (double)freq.QuadPart;
 
+    if (wgf9_log[0])
+    {
+        char log[MAX_PATH];
+
+        snprintf(log, sizeof(log), "%s\\%s.log", logdir, tag);
+        MoveFileExA(wgf9_log, log, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED);
+    }
     out->host_errors = host_errors_since(mark);
     read_events(out, events);
     if (strcmp(e->harness, "taef") == 0)
@@ -2453,8 +2635,8 @@ static int run_one(const catalog_entry *e, const options *o, const char *logdir,
     deploy_data(e);
 
     if (!o->per_group || o->group
-        || (strcmp(e->harness, "wgf") && strcmp(e->harness, "taef")
-            && strcmp(e->harness, "gtest")))
+        || (strcmp(e->harness, "wgf") && strcmp(e->harness, "wgf9")
+            && strcmp(e->harness, "taef") && strcmp(e->harness, "gtest")))
     {
         exclusion *x = o->group ? group_exclusion(e, o->group) : NULL;
 

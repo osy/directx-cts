@@ -9,8 +9,8 @@ the test-case listings it leads to are HLK-derived and are not.
 Harness families, fingerprinted rather than hardcoded:
   wgf      the standalone framework: WTTLog plus the modern option vocabulary,
            selected by a positional backslash group path
-  wgf9     the same framework's D3D9-era generation, selected by numeric case
-           ranges and with no group tree
+  wgf9     the same framework's D3D9-era generation, whose groups are switches
+           ("-Key", "-Key:1-50") listed only in its help dialog
   taef     a TAEF test DLL, run through TE.exe
   gtest    a GoogleTest binary
 """

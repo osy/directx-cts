@@ -279,6 +279,12 @@ file names flatten `\` into `_`, and a group the framework does not know runs th
 whole binary rather than nothing. TAEF lists its methods (a group is a class), gtest
 its suites.
 
+A D3D9-era (wgf9) binary lists its groups only in its help dialog, which waits to be
+closed; the runner reads the `-Key: description` lines out of the dialog's text and
+kills it, and selects a group with `-Key`. The framework writes its text log to
+`%USERPROFILE%\dxlogs\<binary>.log` whatever it is told, overwriting it each time, so
+each process's log is moved beside the rest of its output.
+
 Under Wine a test that crashes does not die: it hangs, and the runner can only see that
 as a timeout, because Wine's `UnhandledExceptionFilter` hands the process to
 `winedbg --auto` and waits on a debugger that never signals. The shims therefore set
@@ -367,8 +373,8 @@ catalog:
 How each family is told: WGF takes `!Group` and `!Group:1-3,7` as positionals and
 neither runs nor logs what they name, so the counts are not inflated by skips; TAEF gets
 a `/select` query; gtest a negative `--gtest_filter`. Under `--per-group` an excluded
-group is simply never spawned. A wgf9 (D3D9-era) binary has no group tree, so only a
-whole-binary entry applies to it; anything finer is reported under
+group is simply never spawned. A wgf9 (D3D9-era) binary's framework can select cases
+but never leave any out, so a `cases` entry for one is reported under
 `selectors_ignored` as `exclusion` rather than quietly run, and so is a WGF wildcard
 group in a whole-binary run, since the framework has no wildcards of its own.
 
