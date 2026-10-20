@@ -1501,13 +1501,13 @@ static long long job_cpu_time(HANDLE job)
  */
 #define START_FLAGS (CREATE_SUSPENDED | NORMAL_PRIORITY_CLASS)
 
-static BOOL start_process(char *cmd, BOOL inherit, STARTUPINFOA *si,
+static BOOL start_process(char *cmd, BOOL inherit, const char *cwd, STARTUPINFOA *si,
                           PROCESS_INFORMATION *pi)
 {
     if (g_run_token)
     {
         if (CreateProcessAsUserA(g_run_token, NULL, cmd, NULL, NULL, inherit,
-                                 START_FLAGS, NULL, NULL, si, pi))
+                                 START_FLAGS, NULL, cwd, si, pi))
             return TRUE;
         /* Refused (Windows wants SeAssignPrimaryToken for this): run limited, and
          * say so rather than silently. */
@@ -1515,7 +1515,7 @@ static BOOL start_process(char *cmd, BOOL inherit, STARTUPINFOA *si,
         g_run_token = NULL;
         g_elevation = "limited";
     }
-    return CreateProcessA(NULL, cmd, NULL, NULL, inherit, START_FLAGS, NULL, NULL,
+    return CreateProcessA(NULL, cmd, NULL, NULL, inherit, START_FLAGS, NULL, cwd,
                           si, pi);
 }
 
@@ -1568,8 +1568,8 @@ static void apply_requests(const catalog_entry *e, const options *o)
  * got to, which is reported as a failure so the caller runs the whole binary rather
  * than silently running the prefix it managed to print.
  */
-static int capture_listing(const char *cmd_in, const char *logdir, char *path,
-                           size_t path_cap)
+static int capture_listing(const char *cmd_in, const char *logdir, const char *cwd,
+                           char *path, size_t path_cap)
 {
     char cmd[8192];
     STARTUPINFOA si;
@@ -1594,7 +1594,7 @@ static int capture_listing(const char *cmd_in, const char *logdir, char *path,
 
     job = make_kill_on_close_job();
 
-    if (!start_process(cmd, TRUE, &si, &pi))
+    if (!start_process(cmd, TRUE, cwd, &si, &pi))
     {
         if (job)
             CloseHandle(job);
@@ -1607,7 +1607,9 @@ static int capture_listing(const char *cmd_in, const char *logdir, char *path,
 
     if (WaitForSingleObject(pi.hProcess, LIST_GROUPS_TIMEOUT_MS) == WAIT_TIMEOUT)
     {
+        /* gone before returning, or it still holds the listing file open */
         TerminateProcess(pi.hProcess, 1);
+        WaitForSingleObject(pi.hProcess, 10000);
         killed = 1;
     }
     CloseHandle(pi.hThread);
@@ -1619,10 +1621,66 @@ static int capture_listing(const char *cmd_in, const char *logdir, char *path,
 }
 
 /*
+ * The groups from the files -GenerateCSV writes, one per group, named after it with
+ * '\\' as '_'.  Group names contain '_' as well, so a name with one in it cannot be
+ * turned back into its path - and a group positional the framework does not know
+ * runs the whole binary rather than nothing, so a guessed path would rerun all of it
+ * once per guess.  Only a listing whose every name is free of '_' is used; each such
+ * name is a top-level group, exactly.
+ */
+static int list_groups_wgf_csv(const catalog_entry *e, const char *logdir,
+                               char groups[MAX_GROUPS][256])
+{
+    char cmd[1024], rel[MAX_PATH], dir[MAX_PATH], path[MAX_PATH], pattern[MAX_PATH];
+    WIN32_FIND_DATAA fd;
+    HANDLE find;
+    int count = 0, usable = 1;
+
+    snprintf(rel, sizeof(rel), "%s\\groups-csv", logdir);
+    if (!GetFullPathNameA(rel, sizeof(dir), dir, NULL))
+        return 0;
+    CreateDirectoryA(dir, NULL);
+    snprintf(pattern, sizeof(pattern), "%s\\*", dir);
+    /* the binary path is relative to the runner's directory, not the listing's */
+    if (!GetFullPathNameA(e->binary, sizeof(path), path, NULL))
+        return 0;
+    snprintf(cmd, sizeof(cmd), "\"%s\" -GenerateCSV", path);
+    if (!capture_listing(cmd, logdir, dir, path, sizeof(path)))
+        usable = 0;
+    DeleteFileA(path);
+    find = FindFirstFileA(pattern, &fd);
+    if (find != INVALID_HANDLE_VALUE)
+    {
+        do
+        {
+            size_t n = strlen(fd.cFileName);
+            char file[MAX_PATH];
+
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+                continue;
+            snprintf(file, sizeof(file), "%s\\%s", dir, fd.cFileName);
+            DeleteFileA(file);
+            if (n <= 4 || _stricmp(fd.cFileName + n - 4, ".csv"))
+                continue;
+            if (strchr(fd.cFileName, '_') || count >= MAX_GROUPS || n - 4 >= sizeof(groups[0]))
+                usable = 0;
+            else
+                snprintf(groups[count++], sizeof(groups[0]), "%.*s", (int)(n - 4),
+                         fd.cFileName);
+        } while (FindNextFileA(find, &fd));
+        FindClose(find);
+    }
+    RemoveDirectoryA(dir);
+    return usable ? count : 0;
+}
+
+/*
  * The framework prints its group tree under a "Test groups:" header, one full
  * backslash path per line, indented by depth.  That is the only listing it offers
  * that keeps the paths intact: -GenerateCSV flattens separators into underscores,
  * which group names also contain, so the path cannot be recovered from a file name.
+ * A binary with a windowed shell shows that tree in a dialog instead and never
+ * returns from -? (DXGISwap); it is listed from its CSV files, where they are exact.
  */
 static int list_groups_wgf(const catalog_entry *e, const char *logdir,
                            char groups[MAX_GROUPS][256])
@@ -1632,8 +1690,8 @@ static int list_groups_wgf(const catalog_entry *e, const char *logdir,
     int count = 0, in_tree = 0, capped = 0;
 
     snprintf(cmd, sizeof(cmd), "\"%s\" -?", e->binary);
-    if (!capture_listing(cmd, logdir, path, sizeof(path)))
-        return 0;
+    if (!capture_listing(cmd, logdir, NULL, path, sizeof(path)))
+        return list_groups_wgf_csv(e, logdir, groups);
 
     fh = open_text(path);
     if (!fh)
@@ -1698,7 +1756,7 @@ static int list_groups_taef(const catalog_entry *e, const char *logdir,
 
     snprintf(cmd, sizeof(cmd), "TE.exe \"%s\"%s /list", e->binary,
              dxcts_wine() ? " /inproc" : "");
-    if (!capture_listing(cmd, logdir, path, sizeof(path)))
+    if (!capture_listing(cmd, logdir, NULL, path, sizeof(path)))
         return 0;
 
     fh = open_text(path);
@@ -1754,7 +1812,7 @@ static int list_groups_gtest(const catalog_entry *e, const char *logdir,
     int count = 0, capped = 0;
 
     snprintf(cmd, sizeof(cmd), "\"%s\" --gtest_list_tests", e->binary);
-    if (!capture_listing(cmd, logdir, path, sizeof(path)))
+    if (!capture_listing(cmd, logdir, NULL, path, sizeof(path)))
         return 0;
     fh = open_text(path);
     if (!fh)
@@ -1932,7 +1990,7 @@ static int spawn_test(const catalog_entry *e, const options *o, const char *logd
 
     job = make_kill_on_close_job();
 
-    if (!start_process(cmd, out_handle != INVALID_HANDLE_VALUE, &si, &pi))
+    if (!start_process(cmd, out_handle != INVALID_HANDLE_VALUE, NULL, &si, &pi))
     {
         fprintf(stderr, "dxcts: cannot start %s (error %lu)\n", e->binary,
                 GetLastError());
@@ -2275,7 +2333,7 @@ static long next_case(const catalog_entry *e, const options *o, const char *logd
 
     build_command(cmd, sizeof(cmd), e, o, logdir, tag, group);
     append(cmd, sizeof(cmd), " -GenerateCSV");
-    if (!capture_listing(cmd, logdir, path, sizeof(path)))
+    if (!capture_listing(cmd, logdir, NULL, path, sizeof(path)))
         return 0;
     DeleteFileA(path);
     /* written to the current directory, named after the group with '\' as '_' */

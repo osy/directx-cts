@@ -272,6 +272,13 @@ executed, 1119 passing**. Whole-binary execution yields far fewer, because the f
 group that wedges the host ends the binary: `WGF11Shader5x` gives 1 case that way
 against 367 per-group.
 
+A WGF binary prints its group tree for `-?`. One whose windowed shell shows that tree
+in a dialog instead, and never returns (DXGISwap), is listed from the files
+`-GenerateCSV` writes, one per group — but only when no name has an `_` in it: the
+file names flatten `\` into `_`, and a group the framework does not know runs the
+whole binary rather than nothing. TAEF lists its methods (a group is a class), gtest
+its suites.
+
 Under Wine a test that crashes does not die: it hangs, and the runner can only see that
 as a timeout, because Wine's `UnhandledExceptionFilter` hands the process to
 `winedbg --auto` and waits on a debugger that never signals. The shims therefore set
