@@ -1805,13 +1805,14 @@ static int signatures_identical(const void *code, size_t len)
  * tagged at creation and never bound: the picture is the same without it, which is
  * what D3DMetal makes of it outside tessellation.
  *
- * Detection reads the SM4/SM5 token stream: input primitive point or line - the two
- * D3DMetal folds - a matching output topology, and a body that is nothing but, for
- * each input vertex in order, a full copy of every declared output register from the
- * same register of that vertex followed by one emit, then ret.  The input and output
- * signatures must agree register for register.  Anything else - a swizzle, a
- * modifier, an arithmetic op, an extra emit, a constant, a DXIL body - leaves the
- * shader alone.
+ * Detection reads the SM4/SM5 token stream: input primitive point, line or triangle,
+ * the matching list or strip topology, and a body that is nothing but, for each input
+ * vertex in order, a copy of every declared output component from the same component
+ * of the same register of that vertex - whole registers or one component at a time,
+ * as fxc writes a register that packs several elements - followed by one emit, then
+ * ret.  The input and output signatures must agree register for register.  Anything
+ * else - a swizzle, a modifier, an arithmetic op, an extra emit, a constant, a DXIL
+ * body - leaves the shader alone.
  */
 enum
 {
@@ -1838,7 +1839,8 @@ static int body_is_pass_through(const dxbc_chunk *c)
 {
     const UINT *t = (const UINT *)c->data;
     UINT n = c->size / 4, i;
-    UINT vertices = 0, topology = 0, declared = 0, written = 0, emitted = 0;
+    UINT vertices = 0, topology = 0, emitted = 0;
+    UINT declared[32] = {0}, written[32] = {0};     /* component masks per register */
     int done = 0;
 
     if (c->size < 8 || c->size % 4)
@@ -1859,7 +1861,7 @@ static int body_is_pass_through(const dxbc_chunk *c)
             {
                 UINT prim = (tok >> 11) & 0x3f;
 
-                vertices = prim == 1 ? 1 : prim == 2 ? 2 : 0;
+                vertices = prim >= 1 && prim <= 3 ? prim : 0;  /* point, line, triangle */
                 if (!vertices)
                     return 0;
             }
@@ -1867,40 +1869,59 @@ static int body_is_pass_through(const dxbc_chunk *c)
                 topology = (tok >> 11) & 0x7f;
             else if (op == OP_DCL_OUTPUT || op == OP_DCL_OUTPUT_SGV || op == OP_DCL_OUTPUT_SIV)
             {
-                if (len < 3 || !plain_operand(t[i + 1], OPERAND_OUTPUT, 1) || t[i + 2] >= 32)
+                UINT dcl = len >= 3 ? t[i + 1] : 0;
+
+                if (len < 3 || !plain_operand(dcl, OPERAND_OUTPUT, 1) || ((dcl >> 2) & 3) != 0
+                    || t[i + 2] >= 32)
                     return 0;
-                declared |= 1u << t[i + 2];
+                declared[t[i + 2]] |= (dcl >> 4) & 0xf;
             }
         }
         else if (op == OP_MOV)
         {
-            /* mov oN.mask, v[k][N].xyzw -- no saturate, nothing extended */
-            UINT dst, reg, src, mask, swizzle, comp;
+            /* mov oN.mask, v[k][N] with each written component read from itself, through
+             * an identity swizzle or a single-component select -- no saturate, nothing
+             * extended */
+            UINT dst, reg, src, mask, comp;
 
             if (len != 6 || (tok >> 11) & 0x1fff)
                 return 0;
             dst = t[i + 1]; reg = t[i + 2]; src = t[i + 3];
-            if (!plain_operand(dst, OPERAND_OUTPUT, 1) || ((dst >> 2) & 3) != 0 || reg >= 32
-                || !(declared & (1u << reg)) || (written & (1u << reg)))
-                return 0;
-            if (!plain_operand(src, OPERAND_INPUT, 2) || ((src >> 2) & 3) != 1
-                || t[i + 4] != emitted || t[i + 5] != reg)
+            if (!plain_operand(dst, OPERAND_OUTPUT, 1) || ((dst >> 2) & 3) != 0 || reg >= 32)
                 return 0;
             mask = (dst >> 4) & 0xf;
-            swizzle = (src >> 4) & 0xff;
-            for (comp = 0; comp < 4; comp++)
-                if ((mask & (1u << comp)) && ((swizzle >> (2 * comp)) & 3) != comp)
-                    return 0;
-            written |= 1u << reg;
+            if (!mask || (mask & ~declared[reg]) || (mask & written[reg]))
+                return 0;
+            if (!plain_operand(src, OPERAND_INPUT, 2) || t[i + 4] != emitted || t[i + 5] != reg)
+                return 0;
+            if (((src >> 2) & 3) == 1)
+            {
+                for (comp = 0; comp < 4; comp++)
+                    if ((mask & (1u << comp)) && ((src >> (4 + 2 * comp)) & 3) != comp)
+                        return 0;
+            }
+            else if (((src >> 2) & 3) != 2 || mask != 1u << ((src >> 4) & 3))
+                return 0;
+            written[reg] |= mask;
         }
         else if (op == OP_EMIT || op == OP_EMIT_STREAM)
         {
+            UINT r, any = 0;
+
             if (op == OP_EMIT_STREAM && (len != 3 || t[i + 2] != 0))
                 return 0;
-            if (!declared || written != declared || emitted == vertices)
+            if (emitted == vertices)
+                return 0;
+            for (r = 0; r < 32; r++)
+            {
+                if (written[r] != declared[r])
+                    return 0;
+                any |= declared[r];
+                written[r] = 0;
+            }
+            if (!any)
                 return 0;
             emitted++;
-            written = 0;
         }
         else if (op == OP_RET)
             done = 1;
@@ -1908,8 +1929,8 @@ static int body_is_pass_through(const dxbc_chunk *c)
             return 0;
         i += len;
     }
-    return done && vertices && emitted == vertices
-        && topology == (vertices == 1 ? 1u : 3u);  /* pointlist / linestrip */
+    /* pointlist / linestrip / trianglestrip */
+    return done && vertices && emitted == vertices && topology == 2 * vertices - 1;
 }
 
 static int gs_is_pass_through(const void *code, size_t len)
