@@ -1271,6 +1271,9 @@ static int append_exclusions(char *cmd, size_t cap, const catalog_entry *e,
  * previous process died in.  See spawn_group. */
 static char g_resume_skip[32];
 
+/* The case numbers a D3D9-era group process runs, or 0: see spawn_wgf9_group. */
+static long g_wgf9_first, g_wgf9_last;
+
 static int build_command(char *cmd, size_t cap, const catalog_entry *e,
                          const options *o, const char *logdir, const char *tag,
                          const char *group)
@@ -1322,7 +1325,9 @@ static int build_command(char *cmd, size_t cap, const catalog_entry *e,
         append(cmd, cap, "\"%s\"", e->binary);
         /* The modern generation selects a group by its path; the D3D9-era one by its
          * key, as a switch. */
-        if (group)
+        if (group && g_wgf9_first)
+            append(cmd, cap, " -%s:%ld-%ld", group, g_wgf9_first, g_wgf9_last);
+        else if (group)
             append(cmd, cap, strcmp(e->harness, "wgf") ? " -%s" : " \"%s\"", group);
         /* Exclusions are positionals too, after the selection they narrow. */
         ignored |= append_exclusions(cmd, cap, e, group, neg, sizeof(neg));
@@ -2544,6 +2549,9 @@ static long next_case(const catalog_entry *e, const options *o, const char *logd
     return found;
 }
 
+static int spawn_wgf9_group(const catalog_entry *e, const options *o, const char *logdir,
+                            const char *tag, const char *group, run_record *part);
+
 static int spawn_group(const catalog_entry *e, const options *o, const char *logdir,
                        const char *tag, const char *group, run_record *part)
 {
@@ -2551,6 +2559,8 @@ static int spawn_group(const catalog_entry *e, const options *o, const char *log
     long skipped_to = 0;
     int ok, resumes = 0;
 
+    if (!strcmp(e->harness, "wgf9") && !o->sample)
+        return spawn_wgf9_group(e, o, logdir, tag, group, part);
     g_resume_skip[0] = 0;
     ok = spawn_test(e, o, logdir, tag, group, part);
     snprintf(attempt_tag, sizeof(attempt_tag), "%s", tag);
@@ -2590,6 +2600,157 @@ static int spawn_group(const catalog_entry *e, const options *o, const char *log
         ok = spawn_test(e, o, logdir, attempt_tag, group, part);
     }
     g_resume_skip[0] = 0;
+    return ok;
+}
+
+/*
+ * A D3D9-era group in case-number ranges.
+ *
+ * StretchRect's first group alone runs past 255,000 cases at 18 a second, more than
+ * any timeout that would still catch a hang, so a group goes in ranges of WGF9_CHUNK
+ * case numbers, one process each, until a range reaches the group's last case.  The
+ * framework repeats a group once per device mode and numbers each repetition from 1,
+ * and a range applies to every repetition, so the ranges partition the group: nothing
+ * runs twice.  One thing does change at a boundary.  A test that cannot run a block of
+ * cases skips the block counted from the case it is at (TexLoad: SkipTestRange(n, n+4)),
+ * so a range starting inside such a block makes it skip into cases it would have run:
+ * TexLoad in ranges of 7 ran 69 of its 78 cases.  At WGF9_CHUNK apart that is
+ * at most a block per boundary, and only in a group larger than one range.
+ *
+ * The text log says where a range ended: every case is "Start:" then its number, and
+ * CleanupTest's number - one past the group's last case, whatever range was asked for -
+ * gives the group's size.  A range whose process dies loses the rest of that range only
+ * (the case it died in is named, as for WGF); the next range runs.  Resuming within the
+ * range is not possible: the restart would have to skip what the dying repetition had
+ * done without skipping it in the repetitions after it, and the selection cannot say
+ * that.
+ */
+#define WGF9_CHUNK 25000
+#define WGF9_MAX_CHUNKS 400
+
+/* From a D3D9-era text log: the group's last case number (CleanupTest's less one, or
+ * -1 if it never ran) and the number of a case that started and never ended, or 0. */
+static void scan_wgf9_log(const char *log, long *last_case, long *unfinished)
+{
+    char line[512];
+    long current = 0;
+    int numbered = 1, cleanup = 0, open = 0;
+    FILE *fh = open_text(log);
+
+    *last_case = -1;
+    *unfinished = 0;
+    if (!fh)
+        return;
+    while (read_text_line(fh, line, sizeof(line)))
+    {
+        char *p = line, *end;
+        long n;
+
+        while (*p == ' ' || *p == '\t')
+            p++;
+        if (!strncmp(p, "Start: ", 7))
+        {
+            numbered = 0;
+            open = 1;
+            cleanup = !strncmp(p + 7, "CleanupTest,", 12);
+            continue;
+        }
+        if (!strncmp(p, "End:", 4))
+        {
+            open = 0;
+            continue;
+        }
+        if (numbered || !*p)
+            continue;
+        n = strtol(p, &end, 10);
+        if (end == p || *end)
+            continue;
+        numbered = 1;
+        current = n;
+        if (cleanup && n - 1 > *last_case)
+            *last_case = n - 1;
+    }
+    fclose(fh);
+    if (open)
+        *unfinished = current;
+}
+
+/* Every range runs the framework's SetupTest and CleanupTest once per pass, and the
+ * first range has recorded them already: a later range's passing pair is not another
+ * case (scenario's second range, which holds none of its cases, added six).  One that
+ * did not pass is kept, as its range's failure. */
+static void drop_repeated_frame_cases(run_record *r, int from)
+{
+    int i, kept = from;
+
+    for (i = from; i < r->case_count; i++)
+    {
+        const case_record *c = &r->cases[i];
+
+        if (c->have_result && c->result == WTT_PASS
+            && (!strcmp(c->name, "SetupTest") || !strcmp(c->name, "CleanupTest")))
+            continue;
+        r->cases[kept++] = *c;
+    }
+    r->case_count = kept;
+}
+
+static int spawn_wgf9_group(const catalog_entry *e, const options *o, const char *logdir,
+                            const char *tag, const char *group, run_record *part)
+{
+    long last_case = -1;
+    int chunk, ok = 1;
+
+    for (chunk = 0; chunk < WGF9_MAX_CHUNKS; chunk++)
+    {
+        char attempt_tag[300], log[MAX_PATH];
+        long found, unfinished;
+        int before = part->case_count, crashed, ran;
+
+        g_wgf9_first = (long)chunk * WGF9_CHUNK + 1;
+        g_wgf9_last = g_wgf9_first + WGF9_CHUNK - 1;
+        /* the first range keeps the group's own tag, which its reasons are read under */
+        if (chunk)
+            snprintf(attempt_tag, sizeof(attempt_tag), "%s-c%d", tag, chunk + 1);
+        else
+            snprintf(attempt_tag, sizeof(attempt_tag), "%s", tag);
+        part->exit_code = 0;
+        if (!spawn_test(e, o, logdir, attempt_tag, group, part))
+            ok = 0;
+        ran = part->case_count != before;
+        if (chunk)
+            drop_repeated_frame_cases(part, before);
+        snprintf(log, sizeof(log), "%s\\%s.log", logdir, attempt_tag);
+        scan_wgf9_log(log, &found, &unfinished);
+        if (found > last_case)
+            last_case = found;
+        crashed = ok && crashed_exit(part) && unfinished > 0;
+        if (crashed)
+        {
+            case_record *c = open_case(part, group, 0);
+
+            if (c)
+                c->executed = 1;    /* started, never ended: incomplete */
+            snprintf(part->crashed + strlen(part->crashed),
+                     sizeof(part->crashed) - strlen(part->crashed), "%s%ld",
+                     part->crashed[0] ? "," : "", unfinished);
+            part->crash_count++;
+            if (g_progress)
+            {
+                fprintf(g_progress, "    crash: %s %s case %ld (exit 0x%08lx); next range\n",
+                        e->binary, group, unfinished, (unsigned long)part->exit_code);
+                fflush(g_progress);
+            }
+        }
+        if (!ok || part->timed_out || part->wedged)
+            break;
+        /* the group's end is known and inside this range, or this range was the last
+         * that could tell: a clean exit that never reached CleanupTest, or a death
+         * before its first case */
+        if ((last_case >= 0 && g_wgf9_last >= last_case) || (!crashed && found < 0) || !ran)
+            break;
+    }
+    g_wgf9_first = g_wgf9_last = 0;
     return ok;
 }
 

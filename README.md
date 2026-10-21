@@ -285,6 +285,12 @@ kills it, and selects a group with `-Key`. The framework writes its text log to
 `%USERPROFILE%\dxlogs\<binary>.log` whatever it is told, overwriting it each time, so
 each process's log is moved beside the rest of its output.
 
+A wgf9 group runs in ranges of 25,000 case numbers (`-Key:1-25000`), one process each,
+until a range reaches the group's last case: StretchRect's first group alone is past
+255,000 cases, more than any timeout that still catches a hang. A range whose process
+dies costs the rest of that range, and the case it died in is named; the next range
+runs.
+
 Under Wine a test that crashes does not die: it hangs, and the runner can only see that
 as a timeout, because Wine's `UnhandledExceptionFilter` hands the process to
 `winedbg --auto` and waits on a debugger that never signals. The shims therefore set
