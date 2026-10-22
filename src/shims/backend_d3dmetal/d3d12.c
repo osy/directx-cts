@@ -48,6 +48,9 @@ typedef void (WINAPI *barrier_fn)(void *, UINT, const D3D12_RESOURCE_BARRIER *);
 typedef void (WINAPI *set_ib_fn)(void *, const D3D12_INDEX_BUFFER_VIEW *);
 typedef void (WINAPI *draw_indexed_fn)(void *, UINT, UINT, UINT, INT, UINT);
 typedef HRESULT (WINAPI *reset_fn)(void *, void *, void *);
+typedef void (WINAPI *resolve_region_fn)(void *, ID3D12Resource *, UINT, UINT, UINT,
+                                         ID3D12Resource *, UINT, D3D12_RECT *, DXGI_FORMAT,
+                                         D3D12_RESOLVE_MODE);
 
 #define REAL_DEV(self, method) dxcts_real_vtable(self)[SLOT(ID3D12DeviceVtbl, method)]
 #define REAL_CL(self, method) \
@@ -204,6 +207,47 @@ static void WINAPI cl_draw_indexed_instanced(void *self, UINT index_count, UINT 
                                                            base_vertex, start_instance);
 }
 
+/* A MIN or MAX resolve of a depth resource: D3DMetal builds it as a draw into a colour
+ * target of the depth format (Depth24Unorm_Stencil8, Depth32Float, Depth16Unorm), Metal
+ * refuses that format as a colour render target, and its validation aborts the process
+ * when the pipeline is built.  Such a resolve is skipped - unless Metal is in this
+ * process and told to report instead of aborting (MTL_ERROR_MODE, which Wine carries
+ * over from the Unix environment; see the README): D3DMetal then gets past the refused
+ * pipeline and the resolve is right (ProgrammableMSAA's Tier1 passes under Wine), so
+ * skipping it would only cost the case. */
+static int metal_aborts(void)
+{
+    static LONG cached;    /* 0 unknown, 1 aborts, 2 reports */
+    char mode[16];
+
+    if (!cached)
+        InterlockedExchange(&cached,
+                            GetEnvironmentVariableA("MTL_ERROR_MODE", mode, sizeof(mode)) ? 2 : 1);
+    return cached == 1;
+}
+
+static void WINAPI cl_resolve_region(void *self, ID3D12Resource *dst, UINT dst_sub, UINT x,
+                                     UINT y, ID3D12Resource *src, UINT src_sub,
+                                     D3D12_RECT *rect, DXGI_FORMAT format,
+                                     D3D12_RESOLVE_MODE mode)
+{
+    if (dm_knob_draw_guards() && src && metal_aborts()
+        && (mode == D3D12_RESOLVE_MODE_MIN || mode == D3D12_RESOLVE_MODE_MAX))
+    {
+        D3D12_RESOURCE_DESC rd;
+
+        resource_desc(src, &rd);
+        if (rd.Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL)
+        {
+            dm_count(&dm_counts.dropped_draws);
+            return;
+        }
+    }
+    ((resolve_region_fn)dxcts_real_vtable(self)[SLOT(ID3D12GraphicsCommandList1Vtbl,
+                                                     ResolveSubresourceRegion)])(
+        dxcts_real(self), dst, dst_sub, x, y, src, src_sub, rect, format, mode);
+}
+
 static void *wrap_cmdlist(void *list)
 {
     static int probed_slots;
@@ -229,6 +273,8 @@ static void *wrap_cmdlist(void *list)
     DXCTS_INSTALL(&w->base, ID3D12GraphicsCommandListVtbl, Reset, cl_reset);
     DXCTS_INSTALL(&w->base, ID3D12GraphicsCommandListVtbl, DrawIndexedInstanced,
                   cl_draw_indexed_instanced);
+    DXCTS_INSTALL(&w->base, ID3D12GraphicsCommandList1Vtbl, ResolveSubresourceRegion,
+                  cl_resolve_region);
     return w;
 }
 

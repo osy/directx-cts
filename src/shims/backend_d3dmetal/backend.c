@@ -106,11 +106,11 @@ static const workaround k_workarounds[] = {
       "each of those dies inside D3DMetal (strdup of NULL, a table overrun, texture "
       "selectors sent to a buffer, a nil index buffer in the GPU driver)", 0 },
     { "d3dmetal/draw-guards", dm_knob_draw_guards,
-      "drops a draw binding a geometry shader with tessellation (refuses such a D3D12 "
-      "pipeline state), never binds a "
-      "pass-through geometry shader, skips a tessellated draw over D3DMetal's "
-      "0x3b80-byte patch budget, and turns alpha-to-coverage off on a target Metal "
-      "cannot blend",
+      "never binds a pass-through geometry shader (refuses a D3D12 pipeline state "
+      "with any geometry shader beside tessellation), skips a tessellated draw over "
+      "D3DMetal's 0x3b80-byte patch budget, turns alpha-to-coverage off on a target "
+      "Metal cannot blend, and skips a MIN or MAX resolve of a depth resource where "
+      "Metal would abort on it",
       "D3DMetal accepts each at bind time and aborts or faults when it encodes the "
       "draw", 1 },
     { "d3dmetal/fetch-bounds", dm_knob_fetch_bounds,
