@@ -1,0 +1,29 @@
+; Load-fixing proxy for d3d9.dll.
+;
+; Every D3D9-era test's framework (CD3D::InitD3D9) resolves d3d9 ordinal 16,
+; Direct3D9ForceHybridEnumeration, on any Windows from 6.3.9321 on, and fails device
+; creation - so the whole binary - when it is missing.  Wine's d3d9 numbers its exports
+; 1-15 and has no 16.  Everything else is a loader forwarder to the platform's d3d9, so
+; device creation and everything after it is Wine's own.
+;
+; Every export has an explicit ordinal: one left to the linker is numbered into the
+; lowest free slot, which is how a stub could end up answering an ordinal the framework
+; asks for by number.  The named entries sit past the stock range for that reason.
+LIBRARY dxc9
+EXPORTS
+    Direct3D9ForceHybridEnumeration = dxcts_d3d9_force_hybrid_enumeration @16 NONAME
+    D3DPERF_BeginEvent = d3d9.D3DPERF_BeginEvent @101
+    D3DPERF_EndEvent = d3d9.D3DPERF_EndEvent @102
+    D3DPERF_GetStatus = d3d9.D3DPERF_GetStatus @103
+    D3DPERF_QueryRepeatFrame = d3d9.D3DPERF_QueryRepeatFrame @104
+    D3DPERF_SetMarker = d3d9.D3DPERF_SetMarker @105
+    D3DPERF_SetOptions = d3d9.D3DPERF_SetOptions @106
+    D3DPERF_SetRegion = d3d9.D3DPERF_SetRegion @107
+    DebugSetLevel = d3d9.DebugSetLevel @108
+    DebugSetMute = d3d9.DebugSetMute @109
+    Direct3DCreate9 = d3d9.Direct3DCreate9 @110
+    Direct3DCreate9Ex = d3d9.Direct3DCreate9Ex @111
+    Direct3DCreate9On12 = d3d9.Direct3DCreate9On12 @112
+    Direct3DShaderValidatorCreate9 = d3d9.Direct3DShaderValidatorCreate9 @113
+    PSGPError = d3d9.PSGPError @114
+    PSGPSampleTexture = d3d9.PSGPSampleTexture @115

@@ -77,6 +77,15 @@ SHIMS: list[Shim] = [
          "D3D12CreateDevice(NULL) takes the default adapter without enumerating",
          frozenset({"D3D12CreateDevice", "D3D12GetInterface"}),
          loaded_by_name=True, every_target=True),
+    Shim("dxc9.dll", "d3d9.dll",
+         "every D3D9-era framework resolves d3d9 ordinal 16 "
+         "(Direct3D9ForceHybridEnumeration) and gives up on the device without it; "
+         "Wine's d3d9 stops at 15.  Everything else forwards to the platform's d3d9",
+         loaded_by_name=True),
+    Shim("dxmsvc.dll", "msvcrt.dll",
+         "the x86 binaries import the _libm_sse2_*_precise maths entry points, which "
+         "Wine's msvcrt has only under their __libm_sse2_* names (and sqrt not at "
+         "all), so they stop at start; everything else forwards to msvcrt"),
     Shim("dxctspwr.dll", "powrprof.dll",
          "Wine implements none of the Power*ValueIndex accessors DXGIHybridPresent "
          "reads its GPU preference through, and the two it does export return success "
