@@ -20,7 +20,9 @@
 #include "../../common/knob.h"
 #include "../../common/shim.h"
 
-#define D3D12_API __declspec(dllexport) WINAPI
+/* Exported through d3d12.def alone.  A dllexport would also export x86's decorated
+ * name, which the linker then numbers into a free stock ordinal. */
+#define D3D12_API WINAPI
 
 #define SLOT  DXCTS_SLOT
 

@@ -4,25 +4,36 @@
 ; are preserved exactly and no argument is ever touched.  Importers reach this module
 ; through a length-preserving import-name rewrite, so the forwarder target "d3d12"
 ; still resolves to the platform's own implementation.
+;
+; Every ordinal is the stock d3d12's (Windows 11 26100), and every export has one:
+; D3DConf_12_Core.dll imports D3D12CreateDevice and D3D12GetDebugInterface by ordinal,
+; and its device cache asks GetProcAddress for ordinal 99 - an unnamed create entry
+; that takes D3D12CreateDevice's arguments, there with a test-private interface - and
+; calls whatever comes back, NULL included.  An export given no ordinal here is
+; numbered by the linker below the lowest one listed, and the one that landed on 99 was
+; D3D12GetInterface, which the cache then called with a device's arguments: under Wine
+; it wrote through a pointer to a constant, and on Windows the class setup failed fast,
+; so every class creating its device that way died.  99 is the create entry here, so
+; the device goes through this module and any backend layer, and the implementation
+; answers for the interface.  Other gaps are stock exports this module has no use for.
 LIBRARY dxc12
 EXPORTS
-    GetBehaviorValue = d3d12.GetBehaviorValue @100
+    D3D12CreateDevice99 = dxcts_d3d12_create_device @99 NONAME
+    D3D12CreateDevice = dxcts_d3d12_create_device @101
+    D3D12GetDebugInterface = d3d12.D3D12GetDebugInterface @102
     D3D12CoreCreateLayeredDevice = d3d12.D3D12CoreCreateLayeredDevice @103
     D3D12CoreGetLayeredDeviceSize = d3d12.D3D12CoreGetLayeredDeviceSize @104
     D3D12CoreRegisterLayers = d3d12.D3D12CoreRegisterLayers @105
-    D3D12CreateDevice = dxcts_d3d12_create_device @101
     D3D12CreateRootSignatureDeserializer = d3d12.D3D12CreateRootSignatureDeserializer @106
     D3D12CreateVersionedRootSignatureDeserializer = d3d12.D3D12CreateVersionedRootSignatureDeserializer @107
-    D3D12EnableExperimentalFeatures = d3d12.D3D12EnableExperimentalFeatures @108
-    D3D12GetDebugInterface = d3d12.D3D12GetDebugInterface @102
-    D3D12SerializeRootSignature = d3d12.D3D12SerializeRootSignature @109
-    D3D12SerializeVersionedRootSignature = d3d12.D3D12SerializeVersionedRootSignature @110
-; d3d12.dll does not export this - it lives in d3d12core - and Wine's d3d12core has
-; only a stub that raises "unimplemented function", killing the process.  d3d12.c
-; forwards to a real d3d12core where there is one and reports absence otherwise.
-    D3D12GetInterface = dxcts_d3d12_get_interface
-; Ordinals match the stock d3d12 numbering: D3DConf_12_Core.dll imports
-; D3D12CreateDevice and D3D12GetDebugInterface by ordinal, not by name.
+    D3D12EnableExperimentalFeatures = d3d12.D3D12EnableExperimentalFeatures @109
+; Wine's d3d12 does not export this - it lives in d3d12core there - and Wine's
+; d3d12core has only a stub that raises "unimplemented function", killing the process.
+; d3d12.c forwards to a real d3d12core where there is one and reports absence otherwise.
+    D3D12GetInterface = dxcts_d3d12_get_interface @110
 ; PIX instrumentation hooks with no Wine equivalent; stubbed in d3d12.c.
-    D3D12PIXEventsReplaceBlock
-    D3D12PIXGetThreadInfo
+    D3D12PIXEventsReplaceBlock @111
+    D3D12PIXGetThreadInfo @112
+    D3D12SerializeRootSignature = d3d12.D3D12SerializeRootSignature @115
+    D3D12SerializeVersionedRootSignature = d3d12.D3D12SerializeVersionedRootSignature @116
+    GetBehaviorValue = d3d12.GetBehaviorValue @117
