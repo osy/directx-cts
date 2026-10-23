@@ -358,6 +358,7 @@ test that can run and gives the same answer twice:
 
     dxcts run --per-group --src WARP --exclusion warp --out warp.json
     dxcts run --per-group --backend d3dmetal --exclusion d3dmetal --out neptune.json
+    dxcts run --per-group --backend d3dmetal --exclusion crossover --out crossover.json
 
 A bare name is a list staged beside `dxcts` (staging copies `suites/` whole); anything
 with a separator or extension is a path. Each line is one flat JSON object, like the
