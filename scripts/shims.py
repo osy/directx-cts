@@ -31,6 +31,10 @@ class Shim:
     # The framework resolves this module with LoadLibrary on a string literal as well
     # as importing it, so the literal has to be retargeted too.
     loaded_by_name: bool = False
+    # Retarget that literal only in binaries the catalog runs under this harness: the
+    # name is common enough that elsewhere the shim is wanted through the import
+    # table alone, or not at all.
+    literal_harness: str | None = None
     # Not a compatibility shim: needed on every target, because it is how results are
     # collected rather than how a module is made to load.
     every_target: bool = False
@@ -55,8 +59,11 @@ SHIMS: list[Shim] = [
          "the DXGI and D3D9-era binaries import the D3DKMT adapter queries from "
          "gdi32 directly rather than through the apiset, so the d3dkmt shim never sees "
          "them and Wine's answers empty every -AdapterType subset; this forwards those "
-         "three to the d3dkmt shim and everything else back to gdi32",
-         frozenset({"D3DKMTOpenAdapterFromDeviceName", "D3DKMTQueryAdapterInfo"})),
+         "three to the d3dkmt shim and everything else back to gdi32.  The D3D9-era "
+         "framework also loads gdi32 by name for D3DKMTOpenAdapterFromHdc, a stub in "
+         "Wine, and without an adapter caps every test at Direct3D 9.0",
+         frozenset({"D3DKMTOpenAdapterFromDeviceName", "D3DKMTQueryAdapterInfo"}),
+         loaded_by_name=True, literal_harness="wgf9"),
     Shim("dxc11.dll", "d3d11.dll",
          "CreateDirect3D11DeviceFromDXGIDevice has no Wine equivalent and five DXGI "
          "tests import it; the device needs wrapping to answer the interface the HLK "

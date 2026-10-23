@@ -1,6 +1,7 @@
 /*
  * D3DKMT entry points that Wine's gdi32 does not export, plus fallbacks for the two
- * queries the HLK's adapter classification depends on.
+ * queries the HLK's adapter classification depends on and the adapter open the
+ * D3D9-era framework's version check does.
  *
  * Wine's apiset schema maps api-ms-win-dx-d3dkmt-l1-1-* onto gdi32 and only hashes the
  * name up to the last hyphen, so every version of that apiset resolves through the
@@ -86,7 +87,6 @@ FORWARD(D3DKMTEnumAdapters)
 FORWARD(D3DKMTEnumAdapters2)
 FORWARD(D3DKMTEscape)
 FORWARD(D3DKMTOpenAdapterFromGdiDisplayName)
-FORWARD(D3DKMTOpenAdapterFromHdc)
 FORWARD(D3DKMTOpenAdapterFromLuid)
 FORWARD(D3DKMTOpenResource)
 FORWARD(D3DKMTOpenResourceFromNtHandle)
@@ -137,6 +137,15 @@ typedef struct
     UINT VidPnSourceId;
 } kmt_open_from_gdi_name;
 
+/* D3DKMT_OPENADAPTERFROMHDC */
+typedef struct
+{
+    HDC hDc;
+    UINT hAdapter;
+    LUID AdapterLuid;
+    UINT VidPnSourceId;
+} kmt_open_from_hdc;
+
 /* D3DKMT_OPENADAPTERFROMLUID */
 typedef struct
 {
@@ -178,6 +187,45 @@ LONG KMT_API D3DKMTOpenAdapterFromDeviceName(void *arg)
 
     req->hAdapter = gdi.hAdapter;
     req->AdapterLuid = gdi.AdapterLuid;
+    return 0;
+}
+
+/*
+ * Wine's is a stub that always fails.  The D3D9-era framework opens the adapter of a
+ * display DC this way to tell a WDDM driver from an XDDM one, and on failure caps every
+ * test at Direct3D 9.0 - skipping each group that tests 9.1 (D3D9Ex) and running the
+ * rest as 9.0 ("the maximum version for this OS/architecture is 9.0").  The DC is one
+ * the framework made for a display, so the primary display's adapter is the one meant,
+ * as for the device-name fallback above.
+ */
+LONG KMT_API D3DKMTOpenAdapterFromHdc(void *arg)
+{
+    static kmt_fn real, from_gdi;
+    static BOOL tried;
+    kmt_open_from_hdc *req = arg;
+    kmt_open_from_gdi_name gdi;
+    LONG status;
+
+    if (!tried)
+    {
+        real = resolve("gdi32.dll", "D3DKMTOpenAdapterFromHdc");
+        from_gdi = resolve("gdi32.dll", "D3DKMTOpenAdapterFromGdiDisplayName");
+        tried = TRUE;
+    }
+
+    status = real ? real(arg) : KMT_UNAVAILABLE;
+    if (status >= 0 || !from_gdi || !req || !req->hDc || !patch_adapter_name())
+        return status;
+
+    ZeroMemory(&gdi, sizeof(gdi));
+    lstrcpyW(gdi.DeviceName, L"\\\\.\\DISPLAY1");
+    status = from_gdi(&gdi);
+    if (status < 0)
+        return status;
+
+    req->hAdapter = gdi.hAdapter;
+    req->AdapterLuid = gdi.AdapterLuid;
+    req->VidPnSourceId = gdi.VidPnSourceId;
     return 0;
 }
 

@@ -211,6 +211,13 @@ def main() -> int:
         shim_modules = {s.module for s in SHIMS}
         staged = {s.module for s in staged_shims}
         forced = behavioural()
+        harness_of = {}
+        for listing in (PROJECT / "suites").glob("*.jsonl"):
+            for line in listing.read_text().splitlines():
+                if line.strip().startswith("{"):
+                    entry = json.loads(line)
+                    if "binary" in entry:
+                        harness_of[entry["binary"].lower()] = entry.get("harness")
         for image in sorted(out.glob("*")):
             if image.suffix.lower() not in (".exe", ".dll"):
                 continue
@@ -242,6 +249,9 @@ def main() -> int:
                 if shim.module not in staged:
                     continue
                 if not shim.loaded_by_name or not shim.replaces:
+                    continue
+                if (shim.literal_harness
+                        and harness_of.get(image.name.lower()) != shim.literal_harness):
                     continue
                 if pemod.rewrite_module_string(image, shim.replaces, shim.module):
                     key = shim.module + " (LoadLibrary)"
