@@ -362,6 +362,10 @@ test that can run and gives the same answer twice:
     dxcts run --per-group --backend d3dmetal --exclusion d3dmetal --out neptune.json
     dxcts run --per-group --backend d3dmetal --exclusion crossover --out crossover.json
     dxcts run --per-group --exclusion dxmt --out dxmt.json
+    CX_ENV=CX_GRAPHICS_BACKEND=dxmt dxcts run --per-group --exclusion crossover-dxmt --out crossover-dxmt.json
+
+`dxmt` is DXMT behind Neptune; `crossover-dxmt` is the older DXMT CrossOver bundles,
+in the bottle, and the two lists differ because the versions do.
 
 A bare name is a list staged beside `dxcts` (staging copies `suites/` whole); anything
 with a separator or extension is a path. Each line is one flat JSON object, like the
