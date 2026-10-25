@@ -18,6 +18,7 @@
 
 #include "../../common/backend.h"
 #include "../../common/comwrap.h"
+#include "../../common/d3d11_ifaces.h"
 #include "../../common/knob.h"
 #include "../../common/shim.h"
 
@@ -109,21 +110,6 @@ static void pin_crypto_modules(void)
 
 /* --- context wrapper --- */
 
-/* Every ID3D11DeviceContext revision is one object behind one vtable, so the wrapper
- * answers for all of them and hands anything else to the real context.  The widest
- * revision the object implements decides the vtable width. */
-static const dxcts_iface k_contexts[] = {
-    { { 0xc0bfa96c, 0xe089, 0x44fb, { 0x8e,0xaf,0x26,0xf8,0x79,0x61,0x90,0xda } },
-      WIDTH(ID3D11DeviceContextVtbl) },
-    { { 0xbb2c6faa, 0xb5fb, 0x4082, { 0x8e,0x6b,0x38,0x8b,0x8c,0xfa,0x90,0xe1 } },
-      WIDTH(ID3D11DeviceContext1Vtbl) },
-    { { 0x420d5b32, 0xb90c, 0x4da4, { 0xbe,0xf0,0x35,0x9f,0x6a,0x24,0xa8,0x3a } },
-      WIDTH(ID3D11DeviceContext2Vtbl) },
-    { { 0xb4e3c01d, 0xe79e, 0x4637, { 0x91,0xb2,0x51,0x0e,0x9f,0x4c,0x9b,0x8f } },
-      WIDTH(ID3D11DeviceContext3Vtbl) },
-    { { 0x917600da, 0xf58c, 0x4c33, { 0x98,0xd8,0x3e,0x15,0xb3,0x90,0xfa,0x24 } },
-      WIDTH(ID3D11DeviceContext4Vtbl) },
-};
 
 static HRESULT WINAPI ctx_qi(void *self, const GUID *iid, void **out)
 {
@@ -131,8 +117,8 @@ static HRESULT WINAPI ctx_qi(void *self, const GUID *iid, void **out)
     dxcts_qi_fn fn = (dxcts_qi_fn)dxcts_real_vtable(self)[0];
 
     if (iid && out
-        && dxcts_wrapper_answers(&w->base, iid, k_contexts,
-                           sizeof(k_contexts) / sizeof(k_contexts[0])))
+        && dxcts_wrapper_answers(&w->base, iid, dxcts_d3d11_contexts,
+                           DXCTS_COUNT(dxcts_d3d11_contexts)))
     {
         dxcts_wrapper_addref(w);
         *out = self;
@@ -228,9 +214,8 @@ static void *wrap_context(void *device, void *ctx)
             return w;
         }
 
-    slots = dxcts_widest_slots(ctx, k_contexts,
-                               sizeof(k_contexts) / sizeof(k_contexts[0]),
-                               &probed_slots);
+    slots = dxcts_widest_slots(ctx, dxcts_d3d11_contexts,
+                               DXCTS_COUNT(dxcts_d3d11_contexts), &probed_slots);
     w = (context_wrapper *)dxcts_wrap(ctx, slots, sizeof(*w));
     if (!w)
     {
@@ -265,21 +250,6 @@ static void *wrap_context(void *device, void *ctx)
 
 /* --- device wrapper --- */
 
-/* Every ID3D11Device revision is one object behind one vtable, as with the context. */
-static const dxcts_iface k_devices[] = {
-    { { 0xdb6f6ddb, 0xac77, 0x4e88, { 0x82,0x53,0x81,0x9d,0xf9,0xbb,0xf1,0x40 } },
-      WIDTH(ID3D11DeviceVtbl) },
-    { { 0xa04bfb29, 0x08ef, 0x43d6, { 0xa4,0x9c,0xa9,0xbd,0xbd,0xcb,0xe6,0x86 } },
-      WIDTH(ID3D11Device1Vtbl) },
-    { { 0x9d06dffa, 0xd1e5, 0x4d07, { 0x83,0xa8,0x1b,0xb1,0x23,0xf2,0xf8,0x41 } },
-      WIDTH(ID3D11Device2Vtbl) },
-    { { 0xa05c8c37, 0xd2c6, 0x4732, { 0xb3,0xa0,0x9c,0xe0,0xb0,0xdc,0x9a,0xe6 } },
-      WIDTH(ID3D11Device3Vtbl) },
-    { { 0x8992ab71, 0x02e6, 0x4b8d, { 0xba,0x48,0xb0,0x56,0xdc,0xda,0x42,0xc4 } },
-      WIDTH(ID3D11Device4Vtbl) },
-    { { 0x8ffde202, 0xa0e7, 0x45df, { 0x9e,0x01,0xe8,0x37,0x80,0x1b,0x5e,0xa0 } },
-      WIDTH(ID3D11Device5Vtbl) },
-};
 
 /*
  * Every way a context leaves the device is wrapped.  Covering only
@@ -334,8 +304,8 @@ static HRESULT WINAPI dev_qi(void *self, const GUID *iid, void **out)
             return S_OK;
         }
     }
-    if (dxcts_wrapper_answers(w, iid, k_devices,
-                        sizeof(k_devices) / sizeof(k_devices[0])))
+    if (dxcts_wrapper_answers(w, iid, dxcts_d3d11_devices,
+                              DXCTS_COUNT(dxcts_d3d11_devices)))
     {
         dxcts_wrapper_addref(w);
         *out = self;
@@ -351,9 +321,8 @@ static void *wrap_device(void *device)
 
     if (!dxcts_wrap_supported())
         return device;
-    w = dxcts_wrap(device, dxcts_widest_slots(device, k_devices,
-                                              sizeof(k_devices)
-                                              / sizeof(k_devices[0]),
+    w = dxcts_wrap(device, dxcts_widest_slots(device, dxcts_d3d11_devices,
+                                              DXCTS_COUNT(dxcts_d3d11_devices),
                                               &probed_slots),
                    sizeof(*w));
     if (!w)

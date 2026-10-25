@@ -160,7 +160,7 @@ int BACKEND_API dxcts_backend_workaround(int i, const char **name, int *active,
 {
     const workaround *w;
 
-    if (i < 0 || (size_t)i >= sizeof(k_workarounds) / sizeof(k_workarounds[0]))
+    if (i < 0 || (size_t)i >= DXCTS_COUNT(k_workarounds))
         return 0;
     w = &k_workarounds[i];
     *name = w->name;

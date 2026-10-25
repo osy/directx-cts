@@ -31,10 +31,6 @@ typedef HRESULT (WINAPI *enum_warp_fn)(void *self, const GUID *iid, void **adapt
 typedef HRESULT (WINAPI *get_interface_fn)(const GUID *clsid, const GUID *iid,
                                            void **out);
 
-static const GUID k_iid_factory4 =
-    { 0x1bc6ea02, 0xef36, 0x464f, { 0xbf, 0x0c, 0x21, 0xca, 0x39, 0xe5, 0x16, 0x8a } };
-static const GUID k_iid_adapter1 =
-    { 0x29038f61, 0x3839, 0x4626, { 0x91, 0xfd, 0x08, 0x68, 0x79, 0x01, 0x1a, 0x05 } };
 
 /* Set by the runner for a WARP run.  Not a defect workaround, so no knob: it has to
  * work identically on both platforms. */
@@ -55,11 +51,11 @@ static void *warp_adapter(void)
 
     create = (create_factory_fn)dxcts_real_proc(&g_real_dxgi, "dxgi.dll",
                                                 "CreateDXGIFactory2");
-    if (!create || FAILED(create(0, &k_iid_factory4, &factory)) || !factory)
+    if (!create || FAILED(create(0, &IID_IDXGIFactory4, &factory)) || !factory)
         return NULL;
     vtable = *(void ***)factory;
     if (FAILED(((enum_warp_fn)vtable[SLOT(IDXGIFactory4Vtbl, EnumWarpAdapter)])(
-                   factory, &k_iid_adapter1, &adapter)))
+                   factory, &IID_IDXGIAdapter1, &adapter)))
         adapter = NULL;
     ((dxcts_ref_fn)vtable[2])(factory);
     return adapter;

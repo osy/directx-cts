@@ -67,56 +67,34 @@ static void *real_proc(const char *name)
     return dxcts_real_proc(&g_real_dxgi, "dxgi.dll", name);
 }
 
-static const GUID k_iid_adapter1 =
-    { 0x29038f61, 0x3839, 0x4626, { 0x91, 0xfd, 0x08, 0x68, 0x79, 0x01, 0x1a, 0x05 } };
 
 static const dxcts_iface k_factories[] = {
-    { { 0x7b7166ec, 0x21c7, 0x44ae, { 0xb2,0x1a,0xc9,0xae,0x32,0x1a,0xe3,0x69 } },
-      WIDTH(IDXGIFactoryVtbl) },
-    { { 0x770aae78, 0xf26f, 0x4dba, { 0xa8,0x29,0x25,0x3c,0x83,0xd1,0xb3,0x87 } },
-      WIDTH(IDXGIFactory1Vtbl) },
-    { { 0x50c83a1c, 0xe072, 0x4c48, { 0x87,0xb0,0x36,0x30,0xfa,0x36,0xa6,0xd0 } },
-      WIDTH(IDXGIFactory2Vtbl) },
-    { { 0x25483823, 0xcd46, 0x4c7d, { 0x86,0xca,0x47,0xaa,0x95,0xb8,0x37,0xbd } },
-      WIDTH(IDXGIFactory3Vtbl) },
-    { { 0x1bc6ea02, 0xef36, 0x464f, { 0xbf,0x0c,0x21,0xca,0x39,0xe5,0x16,0x8a } },
-      WIDTH(IDXGIFactory4Vtbl) },
-    { { 0x7632e1f5, 0xee65, 0x4dca, { 0x87,0xfd,0x84,0xcd,0x75,0xf8,0x83,0x8d } },
-      WIDTH(IDXGIFactory5Vtbl) },
-    { { 0xc1b6694f, 0xff09, 0x44a9, { 0xb0,0x3c,0x77,0x90,0x0a,0x0a,0x1d,0x17 } },
-      WIDTH(IDXGIFactory6Vtbl) },
-    { { 0xa4966eed, 0x76db, 0x44da, { 0x84,0xc1,0xee,0x9a,0x7a,0xfb,0x20,0xa8 } },
-      WIDTH(IDXGIFactory7Vtbl) },
+    { &IID_IDXGIFactory, WIDTH(IDXGIFactoryVtbl) },
+    { &IID_IDXGIFactory1, WIDTH(IDXGIFactory1Vtbl) },
+    { &IID_IDXGIFactory2, WIDTH(IDXGIFactory2Vtbl) },
+    { &IID_IDXGIFactory3, WIDTH(IDXGIFactory3Vtbl) },
+    { &IID_IDXGIFactory4, WIDTH(IDXGIFactory4Vtbl) },
+    { &IID_IDXGIFactory5, WIDTH(IDXGIFactory5Vtbl) },
+    { &IID_IDXGIFactory6, WIDTH(IDXGIFactory6Vtbl) },
+    { &IID_IDXGIFactory7, WIDTH(IDXGIFactory7Vtbl) },
 };
 static const dxcts_iface k_adapters[] = {
-    { { 0x2411e7e1, 0x12ac, 0x4ccf, { 0xbd,0x14,0x97,0x98,0xe8,0x53,0x4d,0xc0 } },
-      WIDTH(IDXGIAdapterVtbl) },
-    { { 0x29038f61, 0x3839, 0x4626, { 0x91,0xfd,0x08,0x68,0x79,0x01,0x1a,0x05 } },
-      WIDTH(IDXGIAdapter1Vtbl) },
-    { { 0x0aa1ae0a, 0xfa0e, 0x4b84, { 0x86,0x44,0xe0,0x5f,0xf8,0xe5,0xac,0xb5 } },
-      WIDTH(IDXGIAdapter2Vtbl) },
-    { { 0x645967a4, 0x1392, 0x4310, { 0xa7,0x98,0x80,0x53,0xce,0x3e,0x93,0xfd } },
-      WIDTH(IDXGIAdapter3Vtbl) },
-    { { 0x3c8d99d1, 0x4fbf, 0x4181, { 0xa8,0x2c,0xaf,0x66,0xbf,0x7b,0xd2,0x4e } },
-      WIDTH(IDXGIAdapter4Vtbl) },
+    { &IID_IDXGIAdapter, WIDTH(IDXGIAdapterVtbl) },
+    { &IID_IDXGIAdapter1, WIDTH(IDXGIAdapter1Vtbl) },
+    { &IID_IDXGIAdapter2, WIDTH(IDXGIAdapter2Vtbl) },
+    { &IID_IDXGIAdapter3, WIDTH(IDXGIAdapter3Vtbl) },
+    { &IID_IDXGIAdapter4, WIDTH(IDXGIAdapter4Vtbl) },
 };
 /* Outputs need their own table: sized from the adapter one, an IDXGIOutput6 wrapper
  * would be ten slots short and a call into one of them would jump past its end. */
 static const dxcts_iface k_outputs[] = {
-    { { 0xae02eedb, 0xc735, 0x4690, { 0x8d,0x52,0x5a,0x8d,0xc2,0x02,0x13,0xaa } },
-      WIDTH(IDXGIOutputVtbl) },
-    { { 0x00cddea8, 0x939b, 0x4b83, { 0xa3,0x40,0xa6,0x85,0x22,0x66,0x66,0xcc } },
-      WIDTH(IDXGIOutput1Vtbl) },
-    { { 0x595e39d1, 0x2724, 0x4663, { 0x99,0xb1,0xda,0x96,0x9d,0xe2,0x83,0x64 } },
-      WIDTH(IDXGIOutput2Vtbl) },
-    { { 0x8a6bb301, 0x7e7e, 0x41F4, { 0xa8,0xe0,0x5b,0x32,0xf7,0xf9,0x9b,0x18 } },
-      WIDTH(IDXGIOutput3Vtbl) },
-    { { 0xdc7dca35, 0x2196, 0x414d, { 0x9F,0x53,0x61,0x78,0x84,0x03,0x2a,0x60 } },
-      WIDTH(IDXGIOutput4Vtbl) },
-    { { 0x80A07424, 0xAB52, 0x42EB, { 0x83,0x3C,0x0C,0x42,0xFD,0x28,0x2D,0x98 } },
-      WIDTH(IDXGIOutput5Vtbl) },
-    { { 0x068346e8, 0xaaec, 0x4b84, { 0xad,0xd7,0x13,0x7f,0x51,0x3f,0x77,0xa1 } },
-      WIDTH(IDXGIOutput6Vtbl) },
+    { &IID_IDXGIOutput, WIDTH(IDXGIOutputVtbl) },
+    { &IID_IDXGIOutput1, WIDTH(IDXGIOutput1Vtbl) },
+    { &IID_IDXGIOutput2, WIDTH(IDXGIOutput2Vtbl) },
+    { &IID_IDXGIOutput3, WIDTH(IDXGIOutput3Vtbl) },
+    { &IID_IDXGIOutput4, WIDTH(IDXGIOutput4Vtbl) },
+    { &IID_IDXGIOutput5, WIDTH(IDXGIOutput5Vtbl) },
+    { &IID_IDXGIOutput6, WIDTH(IDXGIOutput6Vtbl) },
 };
 
 static const dxcts_iface *set_of(object_kind kind, size_t *count)
@@ -124,13 +102,13 @@ static const dxcts_iface *set_of(object_kind kind, size_t *count)
     switch (kind)
     {
     case KIND_FACTORY:
-        *count = sizeof(k_factories) / sizeof(k_factories[0]);
+        *count = DXCTS_COUNT(k_factories);
         return k_factories;
     case KIND_ADAPTER:
-        *count = sizeof(k_adapters) / sizeof(k_adapters[0]);
+        *count = DXCTS_COUNT(k_adapters);
         return k_adapters;
     default:
-        *count = sizeof(k_outputs) / sizeof(k_outputs[0]);
+        *count = DXCTS_COUNT(k_outputs);
         return k_outputs;
     }
 }
@@ -185,7 +163,7 @@ static int is_dwm_iid(const GUID *iid)
 {
     size_t i;
 
-    for (i = 0; i < sizeof(k_dwm_iids) / sizeof(k_dwm_iids[0]); i++)
+    for (i = 0; i < DXCTS_COUNT(k_dwm_iids); i++)
         if (IsEqualGUID(iid, k_dwm_iids[i]))
             return 1;
     return 0;
@@ -385,7 +363,7 @@ static HRESULT WINAPI wrapper_qi(void *self, const GUID *iid, void **out)
 
     if (!iid || !out)
         return E_POINTER;
-    if (IsEqualGUID(iid, &dxcts_iid_unknown))
+    if (IsEqualGUID(iid, &IID_IUnknown))
     {
         dxcts_wrapper_addref(w);        /* COM identity: the same pointer */
         *out = w;
@@ -394,7 +372,7 @@ static HRESULT WINAPI wrapper_qi(void *self, const GUID *iid, void **out)
     if (dwm_output_requested() && is_dwm_iid(iid))
     {
         void *stub = dxcts_stub_object(k_dwm_iids,
-                                       sizeof(k_dwm_iids) / sizeof(k_dwm_iids[0]),
+                                       DXCTS_COUNT(k_dwm_iids),
                                        E_FAIL);
 
         if (stub)
@@ -446,7 +424,7 @@ static HRESULT enum_adapter(wrapper *w, int slot, UINT index, void **adapter)
         if (index > 0 || warp_slot >= w->base.slots)
             return DXGI_ERROR_NOT_FOUND;
         hr = ((enum_warp_fn)dxcts_real_vtable(w)[warp_slot])(dxcts_real(w),
-                                                             &k_iid_adapter1,
+                                                             &IID_IDXGIAdapter1,
                                                              adapter);
     }
     else
@@ -535,7 +513,7 @@ static HRESULT wrap_created_factory(HRESULT hr, const GUID *iid, void **out)
     if (SUCCEEDED(hr) && out && *out && anything_requested()
         && dxcts_wrap_supported()
         && dxcts_iface_slots(iid, k_factories,
-                             sizeof(k_factories) / sizeof(k_factories[0])))
+                             DXCTS_COUNT(k_factories)))
         *out = wrap_factory(*out, -1, 1);
     return hr;
 }

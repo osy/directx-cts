@@ -7,6 +7,8 @@
 
 #include "d3dmetal.h"
 
+#include "../../common/d3d11_ifaces.h"
+
 #include <stdlib.h>
 
 typedef HRESULT (WINAPI *check_msaa_fn)(void *, UINT, UINT, UINT *);
@@ -113,24 +115,6 @@ static const GUID k_ds_shadow_tag =
 static const GUID k_zero_buffer_tag =
     { 0x2f6b8c1e, 0x7d4a, 0x4c93, { 0xb0, 0xe5, 0x9a, 0x1d, 0x3c, 0x7f, 0x2e, 0x60 } };
 
-static const GUID k_iid_d3d11_buffer =
-    { 0x48570b85, 0xd1ee, 0x4fcd, { 0xa2, 0x50, 0xeb, 0x35, 0x07, 0x22, 0xb0, 0x37 } };
-static const GUID k_iid_dxgi_adapter =
-    { 0x2411e7e1, 0x12ac, 0x4ccf, { 0xbd, 0x14, 0x97, 0x98, 0xe8, 0x53, 0x4d, 0xc0 } };
-static const GUID k_iid_dxgi_device2 =
-    { 0x05008617, 0xfbfd, 0x4051, { 0xa7,0x90,0x14,0x48,0x84,0xb4,0xf6,0xa9 } };
-static const GUID k_iid_dxgi_device3 =
-    { 0x6007896c, 0x3244, 0x4afd, { 0xbf,0x18,0xa6,0xd3,0xbe,0xda,0x50,0x23 } };
-static const GUID k_iid_dxgi_device4 =
-    { 0x95b4f95f, 0xd8da, 0x4ca4, { 0x9e,0xe6,0x3b,0x76,0xd5,0x96,0x8a,0x10 } };
-static const GUID k_iid_d3d11_device =
-    { 0xdb6f6ddb, 0xac77, 0x4e88, { 0x82,0x53,0x81,0x9d,0xf9,0xbb,0xf1,0x40 } };
-static const GUID k_iid_d3d11_device5 =
-    { 0x8ffde202, 0xa0e7, 0x45df, { 0x9e,0x01,0xe8,0x37,0x80,0x1b,0x5e,0xa0 } };
-static const GUID k_iid_d3d11_context4 =
-    { 0x917600da, 0xf58c, 0x4c33, { 0x98,0xd8,0x3e,0x15,0xb3,0x90,0xfa,0x24 } };
-static const GUID k_iid_d3d11_fence =
-    { 0xaffde9d1, 0x1df7, 0x4bb7, { 0x8a,0x34,0x0f,0x46,0x25,0x1d,0xab,0x80 } };
 
 /* --- the wrappers --- */
 
@@ -192,34 +176,6 @@ typedef struct
     UINT sample_mask;
     int rt0_unblendable;
 } dm_context;
-
-static const dxcts_iface k_devices[] = {
-    { { 0xdb6f6ddb, 0xac77, 0x4e88, { 0x82,0x53,0x81,0x9d,0xf9,0xbb,0xf1,0x40 } },
-      WIDTH(ID3D11DeviceVtbl) },
-    { { 0xa04bfb29, 0x08ef, 0x43d6, { 0xa4,0x9c,0xa9,0xbd,0xbd,0xcb,0xe6,0x86 } },
-      WIDTH(ID3D11Device1Vtbl) },
-    { { 0x9d06dffa, 0xd1e5, 0x4d07, { 0x83,0xa8,0x1b,0xb1,0x23,0xf2,0xf8,0x41 } },
-      WIDTH(ID3D11Device2Vtbl) },
-    { { 0xa05c8c37, 0xd2c6, 0x4732, { 0xb3,0xa0,0x9c,0xe0,0xb0,0xdc,0x9a,0xe6 } },
-      WIDTH(ID3D11Device3Vtbl) },
-    { { 0x8992ab71, 0x02e6, 0x4b8d, { 0xba,0x48,0xb0,0x56,0xdc,0xda,0x42,0xc4 } },
-      WIDTH(ID3D11Device4Vtbl) },
-    { { 0x8ffde202, 0xa0e7, 0x45df, { 0x9e,0x01,0xe8,0x37,0x80,0x1b,0x5e,0xa0 } },
-      WIDTH(ID3D11Device5Vtbl) },
-};
-
-static const dxcts_iface k_contexts[] = {
-    { { 0xc0bfa96c, 0xe089, 0x44fb, { 0x8e,0xaf,0x26,0xf8,0x79,0x61,0x90,0xda } },
-      WIDTH(ID3D11DeviceContextVtbl) },
-    { { 0xbb2c6faa, 0xb5fb, 0x4082, { 0x8e,0x6b,0x38,0x8b,0x8c,0xfa,0x90,0xe1 } },
-      WIDTH(ID3D11DeviceContext1Vtbl) },
-    { { 0x420d5b32, 0xb90c, 0x4da4, { 0xbe,0xf0,0x35,0x9f,0x6a,0x24,0xa8,0x3a } },
-      WIDTH(ID3D11DeviceContext2Vtbl) },
-    { { 0xb4e3c01d, 0xe79e, 0x4637, { 0x91,0xb2,0x51,0x0e,0x9f,0x4c,0x9b,0x8f } },
-      WIDTH(ID3D11DeviceContext3Vtbl) },
-    { { 0x917600da, 0xf58c, 0x4c33, { 0x98,0xd8,0x3e,0x15,0xb3,0x90,0xfa,0x24 } },
-      WIDTH(ID3D11DeviceContext4Vtbl) },
-};
 
 static void *wrap_context(dm_device *device, void *ctx);
 
@@ -511,26 +467,16 @@ static ID3D11Resource *unwrap(void *res)
 }
 
 static const dxcts_iface k_textures1d[] = {
-    { { 0xf8fb5c27, 0xc6b3, 0x4f75, { 0xa4,0xc8,0x43,0x9a,0xf2,0xef,0x56,0x4c } },
-      WIDTH(ID3D11Texture1DVtbl) },
+    { &IID_ID3D11Texture1D, WIDTH(ID3D11Texture1DVtbl) },
 };
 static const dxcts_iface k_textures2d[] = {
-    { { 0x6f15aaf2, 0xd208, 0x4e89, { 0x9a,0xb4,0x48,0x95,0x35,0xd3,0x4f,0x9c } },
-      WIDTH(ID3D11Texture2DVtbl) },
-    { { 0x51218251, 0x1e33, 0x4617, { 0x9c,0xcb,0x4d,0x3a,0x43,0x67,0xe7,0xbb } },
-      WIDTH(ID3D11Texture2D1Vtbl) },
+    { &IID_ID3D11Texture2D, WIDTH(ID3D11Texture2DVtbl) },
+    { &IID_ID3D11Texture2D1, WIDTH(ID3D11Texture2D1Vtbl) },
 };
 static const dxcts_iface k_textures3d[] = {
-    { { 0x037e866e, 0xf56d, 0x4357, { 0xa8,0xaf,0x9d,0xab,0xbe,0x6e,0x25,0x0e } },
-      WIDTH(ID3D11Texture3DVtbl) },
-    { { 0x0c711683, 0x2853, 0x4846, { 0x9b,0xb7,0xf3,0xe9,0x05,0x82,0xe8,0xdb } },
-      WIDTH(ID3D11Texture3D1Vtbl) },
+    { &IID_ID3D11Texture3D, WIDTH(ID3D11Texture3DVtbl) },
+    { &IID_ID3D11Texture3D1, WIDTH(ID3D11Texture3D1Vtbl) },
 };
-/* The bases every texture answers to, at the width of the narrowest texture. */
-static const GUID k_iid_resource =
-    { 0xdc8e63f3, 0xd12b, 0x4952, { 0xb4,0x7b,0x5e,0x45,0x02,0x6a,0x86,0x2d } };
-static const GUID k_iid_device_child =
-    { 0x1841e5c8, 0x16b0, 0x489b, { 0xbc,0xc8,0x44,0xcf,0xb0,0xd5,0xde,0xae } };
 
 static HRESULT WINAPI tex_qi(void *self, const GUID *iid, void **out)
 {
@@ -544,17 +490,17 @@ static HRESULT WINAPI tex_qi(void *self, const GUID *iid, void **out)
     ID3D11Resource_GetType((ID3D11Resource *)w->base.real, &dim);
     if (dim == D3D11_RESOURCE_DIMENSION_TEXTURE1D)
     {
-        set = k_textures1d; count = sizeof(k_textures1d) / sizeof(k_textures1d[0]);
+        set = k_textures1d; count = DXCTS_COUNT(k_textures1d);
     }
     else if (dim == D3D11_RESOURCE_DIMENSION_TEXTURE3D)
     {
-        set = k_textures3d; count = sizeof(k_textures3d) / sizeof(k_textures3d[0]);
+        set = k_textures3d; count = DXCTS_COUNT(k_textures3d);
     }
     else
     {
-        set = k_textures2d; count = sizeof(k_textures2d) / sizeof(k_textures2d[0]);
+        set = k_textures2d; count = DXCTS_COUNT(k_textures2d);
     }
-    if (IsEqualGUID(iid, &k_iid_resource) || IsEqualGUID(iid, &k_iid_device_child)
+    if (IsEqualGUID(iid, &IID_ID3D11Resource) || IsEqualGUID(iid, &IID_ID3D11DeviceChild)
         || dxcts_wrapper_answers(&w->base, iid, set, count))
     {
         dxcts_wrapper_addref(w);
@@ -615,11 +561,11 @@ static void *wrap_texture(void *tex, DXGI_FORMAT orig)
 
     ID3D11Resource_GetType((ID3D11Resource *)tex, &dim);
     if (dim == D3D11_RESOURCE_DIMENSION_TEXTURE1D)
-        slots = dxcts_widest_slots(tex, k_textures1d, 1, &probed_1d);
+        slots = dxcts_widest_slots(tex, k_textures1d, DXCTS_COUNT(k_textures1d), &probed_1d);
     else if (dim == D3D11_RESOURCE_DIMENSION_TEXTURE3D)
-        slots = dxcts_widest_slots(tex, k_textures3d, 2, &probed_3d);
+        slots = dxcts_widest_slots(tex, k_textures3d, DXCTS_COUNT(k_textures3d), &probed_3d);
     else
-        slots = dxcts_widest_slots(tex, k_textures2d, 2, &probed_2d);
+        slots = dxcts_widest_slots(tex, k_textures2d, DXCTS_COUNT(k_textures2d), &probed_2d);
     w = (tex_wrapper *)dxcts_wrap(tex, slots, sizeof(*w));
     if (!w)
         return tex;
@@ -2896,8 +2842,8 @@ static HRESULT WINAPI ctx_qi(void *self, const GUID *iid, void **out)
 {
     dm_context *w = self;
 
-    if (iid && out && dxcts_wrapper_answers(&w->base, iid, k_contexts,
-                                            sizeof(k_contexts) / sizeof(k_contexts[0])))
+    if (iid && out && dxcts_wrapper_answers(&w->base, iid, dxcts_d3d11_contexts,
+                                            DXCTS_COUNT(dxcts_d3d11_contexts)))
     {
         dxcts_wrapper_addref(w);
         *out = self;
@@ -2974,7 +2920,7 @@ static void *wrap_context(dm_device *device, void *ctx)
             release(ctx);
             return w;
         }
-    slots = dxcts_widest_slots(ctx, k_contexts, sizeof(k_contexts) / sizeof(k_contexts[0]),
+    slots = dxcts_widest_slots(ctx, dxcts_d3d11_contexts, DXCTS_COUNT(dxcts_d3d11_contexts),
                                &probed_slots);
     w = (dm_context *)dxcts_wrap(ctx, slots, sizeof(*w));
     if (!w)
@@ -3320,7 +3266,7 @@ static int refuse_buffer_rtv(ID3D11Resource *res, void **out)
     ID3D11Buffer *buf = NULL;
 
     if (!dm_knob_create_guards() || !res
-        || FAILED(ID3D11Resource_QueryInterface(res, &k_iid_d3d11_buffer, (void **)&buf))
+        || FAILED(ID3D11Resource_QueryInterface(res, &IID_ID3D11Buffer, (void **)&buf))
         || !buf)
         return 0;
     release(buf);
@@ -3708,17 +3654,17 @@ static HRESULT WINAPI dxgi_enqueue_set_event(void *self, HANDLE event)
                                                                                     event);
     if (hr != E_NOTIMPL)
         return hr;
-    if (FAILED(((dxcts_qi_fn)(*(void ***)real)[0])(real, &k_iid_d3d11_device, (void **)&dev))
+    if (FAILED(((dxcts_qi_fn)(*(void ***)real)[0])(real, &IID_ID3D11Device, (void **)&dev))
         || !dev)
         return E_NOTIMPL;
-    hr = ID3D11Device_QueryInterface(dev, &k_iid_d3d11_device5, (void **)&dev5);
+    hr = ID3D11Device_QueryInterface(dev, &IID_ID3D11Device5, (void **)&dev5);
     if (SUCCEEDED(hr) && dev5)
     {
         ID3D11Device_GetImmediateContext(dev, &ctx);
         if (ctx)
-            ID3D11DeviceContext_QueryInterface(ctx, &k_iid_d3d11_context4, (void **)&ctx4);
+            ID3D11DeviceContext_QueryInterface(ctx, &IID_ID3D11DeviceContext4, (void **)&ctx4);
         if (ctx4)
-            hr = ID3D11Device5_CreateFence(dev5, 0, D3D11_FENCE_FLAG_NONE, &k_iid_d3d11_fence,
+            hr = ID3D11Device5_CreateFence(dev5, 0, D3D11_FENCE_FLAG_NONE, &IID_ID3D11Fence,
                                            (void **)&fence);
         if (fence && ctx4)
         {
@@ -3737,21 +3683,15 @@ static HRESULT WINAPI dxgi_enqueue_set_event(void *self, HANDLE event)
 static void *wrap_dxgi_device(void *real)
 {
     static const dxcts_iface k_dxgi_devices[] = {
-        { { 0x54ec77fa, 0x1377, 0x44e6, { 0x8c,0x32,0x88,0xfd,0x5f,0x44,0xc8,0x4c } },
-          WIDTH(IDXGIDeviceVtbl) },
-        { { 0x77db970f, 0x6276, 0x48ba, { 0xba,0x28,0x07,0x01,0x43,0xb4,0x39,0x2c } },
-          WIDTH(IDXGIDevice1Vtbl) },
-        { { 0x05008617, 0xfbfd, 0x4051, { 0xa7,0x90,0x14,0x48,0x84,0xb4,0xf6,0xa9 } },
-          WIDTH(IDXGIDevice2Vtbl) },
-        { { 0x6007896c, 0x3244, 0x4afd, { 0xbf,0x18,0xa6,0xd3,0xbe,0xda,0x50,0x23 } },
-          WIDTH(IDXGIDevice3Vtbl) },
-        { { 0x95b4f95f, 0xd8da, 0x4ca4, { 0x9e,0xe6,0x3b,0x76,0xd5,0x96,0x8a,0x10 } },
-          WIDTH(IDXGIDevice4Vtbl) },
+        { &IID_IDXGIDevice, WIDTH(IDXGIDeviceVtbl) },
+        { &IID_IDXGIDevice1, WIDTH(IDXGIDevice1Vtbl) },
+        { &IID_IDXGIDevice2, WIDTH(IDXGIDevice2Vtbl) },
+        { &IID_IDXGIDevice3, WIDTH(IDXGIDevice3Vtbl) },
+        { &IID_IDXGIDevice4, WIDTH(IDXGIDevice4Vtbl) },
     };
     static int probed_slots;
     dxcts_wrapper *w = dxcts_wrap(real, dxcts_widest_slots(real, k_dxgi_devices,
-                                                           sizeof(k_dxgi_devices)
-                                                           / sizeof(k_dxgi_devices[0]),
+                                                           DXCTS_COUNT(k_dxgi_devices),
                                                            &probed_slots),
                                   sizeof(*w));
 
@@ -3772,15 +3712,15 @@ static HRESULT WINAPI dev_qi(void *self, const GUID *iid, void **out)
 
     if (!iid || !out)
         return E_POINTER;
-    if (dxcts_wrapper_answers(w, iid, k_devices, sizeof(k_devices) / sizeof(k_devices[0])))
+    if (dxcts_wrapper_answers(w, iid, dxcts_d3d11_devices, DXCTS_COUNT(dxcts_d3d11_devices)))
     {
         dxcts_wrapper_addref(w);
         *out = self;
         return S_OK;
     }
     if (dm_knob_enqueue_set_event()
-        && (IsEqualGUID(iid, &k_iid_dxgi_device2) || IsEqualGUID(iid, &k_iid_dxgi_device3)
-            || IsEqualGUID(iid, &k_iid_dxgi_device4)))
+        && (IsEqualGUID(iid, &IID_IDXGIDevice2) || IsEqualGUID(iid, &IID_IDXGIDevice3)
+            || IsEqualGUID(iid, &IID_IDXGIDevice4)))
     {
         HRESULT hr = fn(w->real, iid, out);
 
@@ -3819,7 +3759,7 @@ static int dev_key_of(void *adapter, UINT driver_type, HMODULE software, UINT fl
         IDXGIAdapter *ad = NULL;
         DXGI_ADAPTER_DESC desc;
 
-        if (FAILED(((dxcts_qi_fn)(*(void ***)adapter)[0])(adapter, &k_iid_dxgi_adapter,
+        if (FAILED(((dxcts_qi_fn)(*(void ***)adapter)[0])(adapter, &IID_IDXGIAdapter,
                                                           (void **)&ad)) || !ad)
             return 0;
         if (FAILED(IDXGIAdapter_GetDesc(ad, &desc)))
@@ -3886,9 +3826,8 @@ static dm_device *take_parked(const dev_key *key)
 static void *wrap_device(void *device, const dev_key *key, int reusable, UINT level)
 {
     static int probed_slots;
-    dm_device *w = (dm_device *)dxcts_wrap(device, dxcts_widest_slots(device, k_devices,
-                                                                        sizeof(k_devices)
-                                                                        / sizeof(k_devices[0]),
+    dm_device *w = (dm_device *)dxcts_wrap(device, dxcts_widest_slots(device, dxcts_d3d11_devices,
+                                                                        DXCTS_COUNT(dxcts_d3d11_devices),
                                                                         &probed_slots),
                                            sizeof(*w));
 

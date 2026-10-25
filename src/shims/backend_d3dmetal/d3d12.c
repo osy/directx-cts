@@ -74,51 +74,31 @@ static void resource_desc(ID3D12Resource *r, D3D12_RESOURCE_DESC *out)
 }
 
 static const dxcts_iface k_devices[] = {
-    { { 0x189819f1, 0x1db6, 0x4b57, { 0xbe,0x54,0x18,0x21,0x33,0x9b,0x85,0xf7 } },
-      WIDTH(ID3D12DeviceVtbl) },
-    { { 0x77acce80, 0x638e, 0x4e65, { 0x88,0x95,0xc1,0xf2,0x33,0x86,0x86,0x3e } },
-      WIDTH(ID3D12Device1Vtbl) },
-    { { 0x30baa41e, 0xb15b, 0x475c, { 0xa0,0xbb,0x1a,0xf5,0xc5,0xb6,0x43,0x28 } },
-      WIDTH(ID3D12Device2Vtbl) },
-    { { 0x81dadc15, 0x2bad, 0x4392, { 0x93,0xc5,0x10,0x13,0x45,0xc4,0xaa,0x98 } },
-      WIDTH(ID3D12Device3Vtbl) },
-    { { 0xe865df17, 0xa9ee, 0x46f9, { 0xa4,0x63,0x30,0x98,0x31,0x5a,0xa2,0xe5 } },
-      WIDTH(ID3D12Device4Vtbl) },
-    { { 0x8b4f173b, 0x2fea, 0x4b80, { 0x8f,0x58,0x43,0x07,0x19,0x1a,0xb9,0x5d } },
-      WIDTH(ID3D12Device5Vtbl) },
-    { { 0xc70b221b, 0x40e4, 0x4a17, { 0x89,0xaf,0x02,0x5a,0x07,0x27,0xa6,0xdc } },
-      WIDTH(ID3D12Device6Vtbl) },
-    { { 0x5c014b53, 0x68a1, 0x4b9b, { 0x8b,0xd1,0xdd,0x60,0x46,0xb9,0x35,0x8b } },
-      WIDTH(ID3D12Device7Vtbl) },
-    { { 0x9218e6bb, 0xf944, 0x4f7e, { 0xa7,0x5c,0xb1,0xb2,0xc7,0xb7,0x01,0xf3 } },
-      WIDTH(ID3D12Device8Vtbl) },
-    { { 0x4c80e962, 0xf032, 0x4f60, { 0xbc,0x9e,0xeb,0xc2,0xcf,0xa1,0xd8,0x3c } },
-      WIDTH(ID3D12Device9Vtbl) },
-    { { 0x517f8718, 0xaa66, 0x49f9, { 0xb0,0x2b,0xa7,0xab,0x89,0xc0,0x60,0x31 } },
-      WIDTH(ID3D12Device10Vtbl) },
+    { &IID_ID3D12Device, WIDTH(ID3D12DeviceVtbl) },
+    { &IID_ID3D12Device1, WIDTH(ID3D12Device1Vtbl) },
+    { &IID_ID3D12Device2, WIDTH(ID3D12Device2Vtbl) },
+    { &IID_ID3D12Device3, WIDTH(ID3D12Device3Vtbl) },
+    { &IID_ID3D12Device4, WIDTH(ID3D12Device4Vtbl) },
+    { &IID_ID3D12Device5, WIDTH(ID3D12Device5Vtbl) },
+    { &IID_ID3D12Device6, WIDTH(ID3D12Device6Vtbl) },
+    { &IID_ID3D12Device7, WIDTH(ID3D12Device7Vtbl) },
+    { &IID_ID3D12Device8, WIDTH(ID3D12Device8Vtbl) },
+    { &IID_ID3D12Device9, WIDTH(ID3D12Device9Vtbl) },
+    { &IID_ID3D12Device10, WIDTH(ID3D12Device10Vtbl) },
 };
 
 /* ID3D12CommandList is the base every graphics list also answers to; its width is
  * below the graphics list's, so the wrapper covers it too. */
 static const dxcts_iface k_cmdlists[] = {
-    { { 0x7116d91c, 0xe7e4, 0x47ce, { 0xb8,0xc6,0xec,0x81,0x68,0xf4,0x37,0xe5 } },
-      WIDTH(ID3D12CommandListVtbl) },
-    { { 0x5b160d0f, 0xac1b, 0x4185, { 0x8b,0xa8,0xb3,0xae,0x42,0xa5,0xa4,0x55 } },
-      WIDTH(ID3D12GraphicsCommandListVtbl) },
-    { { 0x553103fb, 0x1fe7, 0x4557, { 0xbb,0x38,0x94,0x6d,0x7d,0x0e,0x7c,0xa7 } },
-      WIDTH(ID3D12GraphicsCommandList1Vtbl) },
-    { { 0x38c3e585, 0xff17, 0x412c, { 0x91,0x50,0x4f,0xc6,0xf9,0xd7,0x2a,0x28 } },
-      WIDTH(ID3D12GraphicsCommandList2Vtbl) },
-    { { 0x6fda83a7, 0xb84c, 0x4e38, { 0x9a,0xc8,0xc7,0xbd,0x22,0x01,0x6b,0x3d } },
-      WIDTH(ID3D12GraphicsCommandList3Vtbl) },
-    { { 0x8754318e, 0xd3a9, 0x4541, { 0x98,0xcf,0x64,0x5b,0x50,0xdc,0x48,0x74 } },
-      WIDTH(ID3D12GraphicsCommandList4Vtbl) },
-    { { 0x55050859, 0x4024, 0x474c, { 0x87,0xf5,0x64,0x72,0xea,0xee,0x44,0xea } },
-      WIDTH(ID3D12GraphicsCommandList5Vtbl) },
-    { { 0xc3827890, 0xe548, 0x4cfa, { 0x96,0xcf,0x56,0x89,0xa9,0x37,0x0f,0x80 } },
-      WIDTH(ID3D12GraphicsCommandList6Vtbl) },
-    { { 0xdd171223, 0x8b61, 0x4769, { 0x90,0xe3,0x16,0x0c,0xcd,0xe4,0xe2,0xc1 } },
-      WIDTH(ID3D12GraphicsCommandList7Vtbl) },
+    { &IID_ID3D12CommandList, WIDTH(ID3D12CommandListVtbl) },
+    { &IID_ID3D12GraphicsCommandList, WIDTH(ID3D12GraphicsCommandListVtbl) },
+    { &IID_ID3D12GraphicsCommandList1, WIDTH(ID3D12GraphicsCommandList1Vtbl) },
+    { &IID_ID3D12GraphicsCommandList2, WIDTH(ID3D12GraphicsCommandList2Vtbl) },
+    { &IID_ID3D12GraphicsCommandList3, WIDTH(ID3D12GraphicsCommandList3Vtbl) },
+    { &IID_ID3D12GraphicsCommandList4, WIDTH(ID3D12GraphicsCommandList4Vtbl) },
+    { &IID_ID3D12GraphicsCommandList5, WIDTH(ID3D12GraphicsCommandList5Vtbl) },
+    { &IID_ID3D12GraphicsCommandList6, WIDTH(ID3D12GraphicsCommandList6Vtbl) },
+    { &IID_ID3D12GraphicsCommandList7, WIDTH(ID3D12GraphicsCommandList7Vtbl) },
 };
 
 /* --- command lists --- */
@@ -134,7 +114,7 @@ static HRESULT WINAPI cl_qi(void *self, const GUID *iid, void **out)
     dm_cmdlist *w = self;
 
     if (iid && out && dxcts_wrapper_answers(&w->base, iid, k_cmdlists,
-                                            sizeof(k_cmdlists) / sizeof(k_cmdlists[0])))
+                                            DXCTS_COUNT(k_cmdlists)))
     {
         dxcts_wrapper_addref(w);
         *out = self;
@@ -253,7 +233,7 @@ static void *wrap_cmdlist(void *list)
     static int probed_slots;
     dm_cmdlist *w;
     int slots = dxcts_widest_slots(list, k_cmdlists,
-                                   sizeof(k_cmdlists) / sizeof(k_cmdlists[0]), &probed_slots);
+                                   DXCTS_COUNT(k_cmdlists), &probed_slots);
 
     /* A list that is not a graphics list (a bundle or a compute/copy list still
      * answers ID3D12GraphicsCommandList; only a video list would not) is passed
@@ -317,9 +297,6 @@ typedef HRESULT (WINAPI *create_queue_fn)(void *, const D3D12_COMMAND_QUEUE_DESC
 typedef HRESULT (WINAPI *create_queue1_fn)(void *, const D3D12_COMMAND_QUEUE_DESC *,
                                           const GUID *, const GUID *, void **);
 
-static const GUID k_iid_queue =
-    { 0x0ec870a6, 0x5d7e, 0x4c22, { 0x8c,0xfc,0x5b,0xaa,0xe0,0x76,0x16,0xed } };
-
 static struct
 {
     void **vtable;
@@ -371,14 +348,14 @@ static int patch_queue(void *object)
     DWORD old;
     int patched;
 
-    if (FAILED(((dxcts_qi_fn)(*(void ***)object)[0])(object, &k_iid_queue, &queue)))
+    if (FAILED(((dxcts_qi_fn)(*(void ***)object)[0])(object, &IID_ID3D12CommandQueue, &queue)))
         return 0;
     vtable = *(void ***)queue;
     slot = &vtable[SLOT(ID3D12CommandQueueVtbl, ExecuteCommandLists)];
     AcquireSRWLockExclusive(&queue_lock);
     patched = *slot == (void *)queue_execute;
     if (!patched
-        && queue_vtable_count < (int)(sizeof(queue_vtables) / sizeof(queue_vtables[0]))
+        && queue_vtable_count < (int)DXCTS_COUNT(queue_vtables)
         && VirtualProtect(slot, sizeof(*slot), PAGE_READWRITE, &old))
     {
         /* The patched slot points into this DLL for the rest of the process. */
@@ -403,8 +380,7 @@ static int patch_queue(void *object)
  * it for an interface first, and every query but the queue's own reaches the real
  * object. */
 static const dxcts_iface k_queues[] = {
-    { { 0x0ec870a6, 0x5d7e, 0x4c22, { 0x8c,0xfc,0x5b,0xaa,0xe0,0x76,0x16,0xed } },
-      WIDTH(ID3D12CommandQueueVtbl) },
+    { &IID_ID3D12CommandQueue, WIDTH(ID3D12CommandQueueVtbl) },
 };
 
 static HRESULT WINAPI queue_qi(void *self, const GUID *iid, void **out)
@@ -412,7 +388,7 @@ static HRESULT WINAPI queue_qi(void *self, const GUID *iid, void **out)
     dxcts_wrapper *w = self;
 
     if (iid && out && dxcts_wrapper_answers(w, iid, k_queues,
-                                            sizeof(k_queues) / sizeof(k_queues[0])))
+                                            DXCTS_COUNT(k_queues)))
     {
         dxcts_wrapper_addref(w);
         *out = self;
@@ -442,11 +418,11 @@ static void *queue_out(void *object, const GUID *iid)
     static int probed_slots;
     dxcts_wrapper *w;
 
-    if (patch_queue(object) || !iid || !IsEqualGUID(iid, &k_iid_queue)
+    if (patch_queue(object) || !iid || !IsEqualGUID(iid, &IID_ID3D12CommandQueue)
         || !dxcts_wrap_supported())
         return object;
     w = dxcts_wrap(object, dxcts_widest_slots(object, k_queues,
-                                              sizeof(k_queues) / sizeof(k_queues[0]),
+                                              DXCTS_COUNT(k_queues),
                                               &probed_slots),
                    sizeof(*w));
     if (!w)
@@ -854,7 +830,7 @@ HRESULT WINAPI dm_d3d12_create_device(dxcts_d3d12_create_fn real, void *adapter,
     if (FAILED(hr) || !device || !*device || !dxcts_wrap_supported())
         return hr;
     w = dxcts_wrap(*device, dxcts_widest_slots(*device, k_devices,
-                                               sizeof(k_devices) / sizeof(k_devices[0]),
+                                               DXCTS_COUNT(k_devices),
                                                &probed_slots),
                    sizeof(*w));
     if (!w)

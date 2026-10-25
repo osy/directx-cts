@@ -24,6 +24,7 @@
 /* Vtable geometry taken from the headers rather than counted by hand. */
 #define DXCTS_SLOT(vtbl, method) ((int)(offsetof(vtbl, method) / sizeof(void *)))
 #define DXCTS_WIDTH(vtbl) ((int)(sizeof(vtbl) / sizeof(void *)))
+#define DXCTS_COUNT(array) (sizeof(array) / sizeof((array)[0]))
 
 /*
  * Override one slot, but only where the object is wide enough to have it: the later
@@ -55,11 +56,9 @@ typedef ULONG (WINAPI *dxcts_ref_fn)(void *self);
 /* Vtable width of one interface, for the tables below. */
 typedef struct
 {
-    GUID iid;
+    const GUID *iid;
     int slots;
 } dxcts_iface;
-
-extern const GUID dxcts_iid_unknown;
 
 /* 0 on an architecture with no thunk, where a shim must pass the object through. */
 int dxcts_wrap_supported(void);

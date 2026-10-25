@@ -3,9 +3,6 @@
 
 #include "comwrap.h"
 
-const GUID dxcts_iid_unknown =
-    { 0x00000000, 0x0000, 0x0000, { 0xc0, 0, 0, 0, 0, 0, 0, 0x46 } };
-
 /*
  * The thunks are compiled into this module rather than generated at run time: the
  * HLK binaries opt into the dynamic-code prohibition (SetProcessMitigationPolicy), so
@@ -149,7 +146,7 @@ int dxcts_iface_slots(const GUID *iid, const dxcts_iface *set, size_t count)
     size_t i;
 
     for (i = 0; iid && i < count; i++)
-        if (IsEqualGUID(iid, &set[i].iid))
+        if (IsEqualGUID(iid, set[i].iid))
             return set[i].slots;
     return 0;
 }
@@ -159,7 +156,7 @@ int dxcts_wrapper_answers(const dxcts_wrapper *w, const GUID *iid,
 {
     int width;
 
-    if (IsEqualGUID(iid, &dxcts_iid_unknown))
+    if (IsEqualGUID(iid, &IID_IUnknown))
         return 1;
     width = dxcts_iface_slots(iid, set, count);
     return width && width <= w->slots;
@@ -178,7 +175,7 @@ int dxcts_widest_slots(void *object, const dxcts_iface *set, size_t count, int *
     {
         void *queried = NULL;
 
-        if (SUCCEEDED(qi(object, &set[i].iid, &queried)) && queried)
+        if (SUCCEEDED(qi(object, set[i].iid, &queried)) && queried)
         {
             ((dxcts_ref_fn)(*(void ***)queried)[2])(queried);
             if (set[i].slots > best)
@@ -217,7 +214,7 @@ static HRESULT WINAPI stub_qi(void *self, const GUID *iid, void **out)
     for (i = 0; i < o->iid_count; i++)
         if (IsEqualGUID(iid, o->iids[i]))
             break;
-    if (i == o->iid_count && !IsEqualGUID(iid, &dxcts_iid_unknown))
+    if (i == o->iid_count && !IsEqualGUID(iid, &IID_IUnknown))
         return E_NOINTERFACE;
     InterlockedIncrement(&o->refs);
     *out = o;
