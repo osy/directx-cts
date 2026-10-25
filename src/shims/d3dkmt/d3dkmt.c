@@ -15,11 +15,10 @@
  */
 
 #include <windows.h>
-#include <stddef.h>
-#include <dxgi1_4.h>
 
 #include "../../common/knob.h"
 #include "../../common/shim.h"
+#include "../../common/warp.h"
 
 #define KMT_API __declspec(dllexport) WINAPI
 
@@ -29,13 +28,11 @@ DXCTS_REQUEST(warp_only, "DXCTS_WARP_ONLY")
 
 typedef LONG (WINAPI *kmt_fn)(void *);
 
-static kmt_fn resolve(const char *module, const char *name)
-{
-    HMODULE lib = GetModuleHandleA(module);
+static HMODULE g_gdi32, g_win32u;
 
-    if (!lib)
-        lib = LoadLibraryA(module);
-    return lib ? (kmt_fn)(void *)GetProcAddress(lib, name) : NULL;
+static kmt_fn gdi32_proc(const char *name)
+{
+    return (kmt_fn)dxcts_real_proc(&g_gdi32, "gdi32.dll", name);
 }
 
 /* STATUS_PROCEDURE_NOT_FOUND: the caller sees a failed call rather than a crash if a
@@ -46,9 +43,9 @@ static kmt_fn resolve(const char *module, const char *name)
     LONG KMT_API name(void *arg)                                       \
     {                                                                  \
         static kmt_fn fn;                                              \
-        static BOOL tried;                                             \
                                                                        \
-        if (!tried) { fn = resolve("gdi32.dll", #name); tried = TRUE; } \
+        if (!fn)                                                       \
+            fn = gdi32_proc(#name);                                    \
         return fn ? fn(arg) : KMT_UNAVAILABLE;                         \
     }
 
@@ -61,15 +58,11 @@ static kmt_fn resolve(const char *module, const char *name)
     LONG KMT_API name(void *arg)                                       \
     {                                                                  \
         static kmt_fn fn;                                              \
-        static BOOL tried;                                             \
                                                                        \
-        if (!tried)                                                    \
-        {                                                              \
-            fn = resolve("gdi32.dll", #name);                          \
-            if (!fn)                                                   \
-                fn = resolve("win32u.dll", thunk);                     \
-            tried = TRUE;                                              \
-        }                                                              \
+        if (!fn)                                                       \
+            fn = gdi32_proc(#name);                                    \
+        if (!fn)                                                       \
+            fn = (kmt_fn)dxcts_real_proc(&g_win32u, "win32u.dll", thunk); \
         return fn ? fn(arg) : KMT_UNAVAILABLE;                         \
     }
 
@@ -153,6 +146,21 @@ typedef struct
     UINT hAdapter;
 } kmt_open_from_luid;
 
+/* The primary display's adapter, which is the one a caller of the two opens below
+ * means: the framework's device name and its DC both name the display it renders to. */
+static LONG open_primary_display(kmt_open_from_gdi_name *gdi)
+{
+    static kmt_fn from_gdi;
+
+    if (!from_gdi)
+        from_gdi = gdi32_proc("D3DKMTOpenAdapterFromGdiDisplayName");
+    if (!from_gdi)
+        return KMT_UNAVAILABLE;
+    ZeroMemory(gdi, sizeof(*gdi));
+    lstrcpyW(gdi->DeviceName, L"\\\\.\\DISPLAY1");
+    return from_gdi(gdi);
+}
+
 /*
  * Wine's implementation only recognises device interface paths it enumerated itself,
  * and the HLK adapter-classification chain feeds it one it did not, leaving the
@@ -162,29 +170,16 @@ typedef struct
  */
 LONG KMT_API D3DKMTOpenAdapterFromDeviceName(void *arg)
 {
-    static kmt_fn real, from_gdi;
-    static BOOL tried;
+    static kmt_fn real;
     kmt_open_from_device_name *req = arg;
     kmt_open_from_gdi_name gdi;
     LONG status;
 
-    if (!tried)
-    {
-        real = resolve("gdi32.dll", "D3DKMTOpenAdapterFromDeviceName");
-        from_gdi = resolve("gdi32.dll", "D3DKMTOpenAdapterFromGdiDisplayName");
-        tried = TRUE;
-    }
-
+    if (!real)
+        real = gdi32_proc("D3DKMTOpenAdapterFromDeviceName");
     status = real ? real(arg) : KMT_UNAVAILABLE;
-    if (status >= 0 || !from_gdi || !req || !patch_adapter_name())
+    if (status >= 0 || !req || !patch_adapter_name() || open_primary_display(&gdi) < 0)
         return status;
-
-    ZeroMemory(&gdi, sizeof(gdi));
-    lstrcpyW(gdi.DeviceName, L"\\\\.\\DISPLAY1");
-    status = from_gdi(&gdi);
-    if (status < 0)
-        return status;
-
     req->hAdapter = gdi.hAdapter;
     req->AdapterLuid = gdi.AdapterLuid;
     return 0;
@@ -194,35 +189,21 @@ LONG KMT_API D3DKMTOpenAdapterFromDeviceName(void *arg)
  * Wine's is a stub that always fails.  The D3D9-era framework opens the adapter of a
  * display DC this way to tell a WDDM driver from an XDDM one, and on failure caps every
  * test at Direct3D 9.0 - skipping each group that tests 9.1 (D3D9Ex) and running the
- * rest as 9.0 ("the maximum version for this OS/architecture is 9.0").  The DC is one
- * the framework made for a display, so the primary display's adapter is the one meant,
- * as for the device-name fallback above.
+ * rest as 9.0 ("the maximum version for this OS/architecture is 9.0").
  */
 LONG KMT_API D3DKMTOpenAdapterFromHdc(void *arg)
 {
-    static kmt_fn real, from_gdi;
-    static BOOL tried;
+    static kmt_fn real;
     kmt_open_from_hdc *req = arg;
     kmt_open_from_gdi_name gdi;
     LONG status;
 
-    if (!tried)
-    {
-        real = resolve("gdi32.dll", "D3DKMTOpenAdapterFromHdc");
-        from_gdi = resolve("gdi32.dll", "D3DKMTOpenAdapterFromGdiDisplayName");
-        tried = TRUE;
-    }
-
+    if (!real)
+        real = gdi32_proc("D3DKMTOpenAdapterFromHdc");
     status = real ? real(arg) : KMT_UNAVAILABLE;
-    if (status >= 0 || !from_gdi || !req || !req->hDc || !patch_adapter_name())
+    if (status >= 0 || !req || !req->hDc || !patch_adapter_name()
+        || open_primary_display(&gdi) < 0)
         return status;
-
-    ZeroMemory(&gdi, sizeof(gdi));
-    lstrcpyW(gdi.DeviceName, L"\\\\.\\DISPLAY1");
-    status = from_gdi(&gdi);
-    if (status < 0)
-        return status;
-
     req->hAdapter = gdi.hAdapter;
     req->AdapterLuid = gdi.AdapterLuid;
     req->VidPnSourceId = gdi.VidPnSourceId;
@@ -239,62 +220,36 @@ static UINT warp_driver_version(void)
 {
     static UINT cached;
     static BOOL tried;
-    static const GUID iid_factory4 =
-        { 0x1bc6ea02, 0xef36, 0x464f, { 0xbf,0x0c,0x21,0xca,0x39,0xe5,0x16,0x8a } };
-    static const GUID iid_adapter1 =
-        { 0x29038f61, 0x3839, 0x4626, { 0x91,0xfd,0x08,0x68,0x79,0x01,0x1a,0x05 } };
-    HRESULT (WINAPI *create)(UINT, const GUID *, void **);
-    HRESULT (WINAPI *enum_warp)(void *, const GUID *, void **);
-    HRESULT (WINAPI *get_desc1)(void *, void *);
-    void *factory = NULL, *warp = NULL, **vtable;
-    kmt_fn open_luid, query;
+    kmt_fn open_luid = gdi32_proc("D3DKMTOpenAdapterFromLuid");
+    kmt_fn query = gdi32_proc("D3DKMTQueryAdapterInfo");
+    IDXGIAdapter1 *warp;
     DXGI_ADAPTER_DESC1 desc;
-    kmt_query_adapter_info q;
     kmt_open_from_luid open;
-    HMODULE dxgi;
+    kmt_query_adapter_info q;
     UINT version = 0;
 
     if (tried)
         return cached;
     tried = TRUE;
-    dxgi = LoadLibraryA("dxgi.dll");
-    open_luid = resolve("gdi32.dll", "D3DKMTOpenAdapterFromLuid");
-    query = resolve("gdi32.dll", "D3DKMTQueryAdapterInfo");
-    if (!dxgi || !open_luid || !query)
+    if (!open_luid || !query || !(warp = dxcts_warp_adapter()))
         return 0;
-    create = (HRESULT (WINAPI *)(UINT, const GUID *, void **))(void *)
-             GetProcAddress(dxgi, "CreateDXGIFactory2");
-    if (!create || FAILED(create(0, &iid_factory4, &factory)) || !factory)
-        return 0;
-
-    vtable = *(void ***)factory;
-    enum_warp = (HRESULT (WINAPI *)(void *, const GUID *, void **))
-        vtable[offsetof(IDXGIFactory4Vtbl, EnumWarpAdapter) / sizeof(void *)];
-    if (SUCCEEDED(enum_warp(factory, &iid_adapter1, &warp)) && warp)
+    ZeroMemory(&desc, sizeof(desc));
+    ZeroMemory(&open, sizeof(open));
+    if (SUCCEEDED(warp->lpVtbl->GetDesc1(warp, &desc)))
     {
-        void **adapter_vtable = *(void ***)warp;
-
-        get_desc1 = (HRESULT (WINAPI *)(void *, void *))
-            adapter_vtable[offsetof(IDXGIAdapter1Vtbl, GetDesc1) / sizeof(void *)];
-        ZeroMemory(&desc, sizeof(desc));
-        if (SUCCEEDED(get_desc1(warp, &desc)))
+        open.AdapterLuid = desc.AdapterLuid;
+        if (open_luid(&open) == 0)
         {
-            ZeroMemory(&open, sizeof(open));
-            open.AdapterLuid = desc.AdapterLuid;
-            if (open_luid(&open) == 0)
-            {
-                ZeroMemory(&q, sizeof(q));
-                q.hAdapter = open.hAdapter;
-                q.Type = KMTQAITYPE_DRIVERVERSION;
-                q.pPrivateDriverData = &version;
-                q.PrivateDriverDataSize = sizeof(version);
-                if (query(&q) == 0)
-                    cached = version;
-            }
+            ZeroMemory(&q, sizeof(q));
+            q.hAdapter = open.hAdapter;
+            q.Type = KMTQAITYPE_DRIVERVERSION;
+            q.pPrivateDriverData = &version;
+            q.PrivateDriverDataSize = sizeof(version);
+            if (query(&q) == 0)
+                cached = version;
         }
-        ((ULONG (WINAPI *)(void *))adapter_vtable[2])(warp);
     }
-    ((ULONG (WINAPI *)(void *))vtable[2])(factory);
+    warp->lpVtbl->Release(warp);
     return cached;
 }
 
@@ -307,15 +262,11 @@ static UINT warp_driver_version(void)
 LONG KMT_API D3DKMTQueryAdapterInfo(void *arg)
 {
     static kmt_fn real;
-    static BOOL tried;
     kmt_query_adapter_info *q = arg;
     LONG status;
 
-    if (!tried)
-    {
-        real = resolve("gdi32.dll", "D3DKMTQueryAdapterInfo");
-        tried = TRUE;
-    }
+    if (!real)
+        real = gdi32_proc("D3DKMTQueryAdapterInfo");
 
     status = real ? real(arg) : KMT_UNAVAILABLE;
     if (!q || !q->pPrivateDriverData)
