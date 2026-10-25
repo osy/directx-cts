@@ -253,7 +253,9 @@ SECONDS` (default 60) names a group that runs long without failing it; the count
 the report as `slow_groups`. Tests are spawned rather than hosted, so a crashing or
 wedged one costs only its own result. `--timeout` bounds each spawned process — each
 group under `--per-group`, each binary otherwise — and given explicitly it also
-overrides the per-binary value the catalog carries.
+overrides the per-binary value the catalog carries. A test whose log already holds its
+closing summary and then sits quiet for 30 s is stuck in its own exit: it is terminated,
+its verdicts kept, and the report marks it `exit_hung` rather than `wedged`.
 
 `--11on12` runs the D3D11 WGF binaries through D3D11On12, so the D3D12 implementation is
 what is under test; that is how the kit's own D3D12 job list runs them, and the report's

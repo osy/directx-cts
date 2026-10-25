@@ -45,6 +45,11 @@
  * running, is wedged rather than slow: the slowest group measured here needs
  * minutes per case at worst, and a wedge never finishes another one. */
 #define DEFAULT_STALL_S 600
+/* A test whose log already holds its closing Summary has nothing left to report, so a
+ * process that then sits quiet this long is stuck in its own exit, not in a case.
+ * CrossOver's DXMT faults in a worker thread's autorelease-pool teardown at exit and
+ * never finishes dying; waiting out the full stall for that cost 600 s a group. */
+#define EXIT_GRACE_S 30
 
 /* Opened rather than stat'ed: NTFS updates a directory entry lazily while another
  * process holds the file open, so the size a stat reports can sit at zero for a file
@@ -66,6 +71,45 @@ static long long event_file_size(const char *path)
         result = size.QuadPart;
     CloseHandle(handle);
     return result;
+}
+
+/* Whether a framework log ends in its closing "Summary: Total=" block.  Some
+ * frameworks (10L9, the DXGI binaries) write a summary after every sub-test, so a
+ * summary only closes the log when no case starts after it.  The log may be UTF-16 or
+ * ASCII, so the NUL bytes are dropped before matching. */
+static int log_has_summary(const char *path)
+{
+    static const char want[] = "Summary: Total=";
+    char raw[8192], text[sizeof(raw) + 1], *at_summary, *next;
+    LARGE_INTEGER size, at;
+    HANDLE handle;
+    DWORD got = 0, i, n = 0;
+
+    if (!path || !path[0])
+        return 0;
+    handle = CreateFileA(path, GENERIC_READ,
+                         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
+                         OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (handle == INVALID_HANDLE_VALUE)
+        return 0;
+    if (GetFileSizeEx(handle, &size))
+    {
+        at.QuadPart = size.QuadPart > (LONGLONG)sizeof(raw)
+                    ? size.QuadPart - (LONGLONG)sizeof(raw) : 0;
+        if (SetFilePointerEx(handle, at, NULL, FILE_BEGIN))
+            ReadFile(handle, raw, sizeof(raw), &got, NULL);
+    }
+    CloseHandle(handle);
+    for (i = 0; i < got; i++)
+        if (raw[i])
+            text[n++] = raw[i];
+    text[n] = 0;
+    at_summary = strstr(text, want);
+    if (!at_summary)
+        return 0;
+    while ((next = strstr(at_summary + 1, want)) != NULL)
+        at_summary = next;
+    return strstr(at_summary, "Start: ") == NULL;
 }
 
 /*
@@ -168,6 +212,8 @@ typedef struct group_result
     /* the host faulted somewhere it cannot recover from and the process stopped
      * making progress; distinct from timed_out, which is only "took too long" */
     int wedged;
+    /* finished and wrote its Summary, then never exited; terminated, verdicts kept */
+    int exit_hung;
     DWORD exit_code;
     int altered;            /* draws a workaround suppressed; see the shim */
     int host_errors;        /* host validation failures the run survived */
@@ -187,6 +233,7 @@ typedef struct
     DWORD exit_code;
     int timed_out;
     int wedged;
+    int exit_hung;          /* see group_result */
     double seconds;
     case_record *cases;
     int case_count;
@@ -2107,7 +2154,7 @@ static int spawn_test(const catalog_entry *e, const options *o, const char *logd
 {
     long long mark;
     char cmd[8192], events[MAX_PATH], child_out[MAX_PATH], child_err[MAX_PATH];
-    char wgf9_log[MAX_PATH];
+    char wgf9_log[MAX_PATH], own_log[MAX_PATH];
     HANDLE out_handle, err_handle;
     SECURITY_ATTRIBUTES inherit = { sizeof(inherit), NULL, TRUE };
     STARTUPINFOA si;
@@ -2118,6 +2165,7 @@ static int spawn_test(const catalog_entry *e, const options *o, const char *logd
     HANDLE job;
 
     snprintf(events, sizeof(events), "%s\\%s.events.jsonl", logdir, tag);
+    snprintf(own_log, sizeof(own_log), "%s\\%s.log", logdir, tag);
     DeleteFileA(events);
     SetEnvironmentVariableA("DXCTS_EVENTS", events);
 
@@ -2224,6 +2272,12 @@ static int spawn_test(const catalog_entry *e, const options *o, const char *logd
 
                 quiet = (now == last) ? quiet + slice : 0;
                 last = now;
+                if (quiet >= EXIT_GRACE_S * 1000
+                    && log_has_summary(wgf9_log[0] ? wgf9_log : own_log))
+                {
+                    out->exit_hung = 1;
+                    break;
+                }
                 if (quiet >= o->stall_s * 1000)
                 {
                     out->wedged = 1;
@@ -2232,12 +2286,15 @@ static int spawn_test(const catalog_entry *e, const options *o, const char *logd
             }
         }
     }
-    if (out->timed_out || out->wedged)
+    if (out->timed_out || out->wedged || out->exit_hung)
     {
         TerminateProcess(pi.hProcess, 1);
         WaitForSingleObject(pi.hProcess, 10000);
     }
     GetExitCodeProcess(pi.hProcess, &out->exit_code);
+    /* the test completed; the exit code it never got to return is not a crash */
+    if (out->exit_hung)
+        out->exit_code = 0;
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
     if (job)
@@ -2852,6 +2909,7 @@ static int run_one(const catalog_entry *e, const options *o, const char *logdir,
         out->seconds += part.seconds;
         out->timed_out |= part.timed_out;
         out->wedged |= part.wedged;
+        out->exit_hung |= part.exit_hung;
         if (part.exit_code)
             out->exit_code = part.exit_code;
         out->truncated |= part.truncated;
@@ -2881,6 +2939,7 @@ static int run_one(const catalog_entry *e, const options *o, const char *logdir,
             g->cases = part.case_count;
             g->timed_out = part.timed_out;
             g->wedged = part.wedged;
+            g->exit_hung = part.exit_hung;
             g->exit_code = part.exit_code;
             g->altered = part.altered;
             g->host_errors = part.host_errors;
@@ -3079,6 +3138,8 @@ static void write_report(FILE *fh, run_record *runs, int count, const options *o
         json_int(&w, "exit_code", (long long)(long)r->exit_code);
         json_bool(&w, "timed_out", r->timed_out);
         json_bool(&w, "wedged", r->wedged);
+        if (r->exit_hung)
+            json_bool(&w, "exit_hung", 1);
         json_num(&w, "seconds", r->seconds);
         if (!r->group_count && r->slow)
             json_bool(&w, "slow", 1);
@@ -3159,6 +3220,8 @@ static void write_report(FILE *fh, run_record *runs, int count, const options *o
                 json_num(&w, "seconds", r->groups[g].seconds);
                 json_bool(&w, "timed_out", r->groups[g].timed_out);
                 json_bool(&w, "wedged", r->groups[g].wedged);
+                if (r->groups[g].exit_hung)
+                    json_bool(&w, "exit_hung", 1);
                 /* A group that ends non-zero without timing out crashed, which is a
                  * result about the implementation; a timeout is not. */
                 json_int(&w, "exit_code", (int)r->groups[g].exit_code);
@@ -3513,7 +3576,9 @@ int main(int argc, char **argv)
                     runs[count].seconds,
                     runs[count].wedged
                         ? " (WEDGED - host fault; needs a shim fix, not a bigger budget)"
-                        : runs[count].timed_out ? " (TIMED OUT)" : "");
+                        : runs[count].timed_out ? " (TIMED OUT)"
+                        : runs[count].exit_hung ? " (hung in exit after its summary; terminated)"
+                        : "");
             fflush(g_progress);
         }
         count++;
