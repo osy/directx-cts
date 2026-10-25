@@ -6,31 +6,17 @@
 #include "d3d11_layer.h"
 
 /* A lock over the layer's tables, kept simple: none of them is on a hot path. */
-static CRITICAL_SECTION g_lock;
-static LONG g_lock_ready;
-
-static void lock_init(void)
-{
-    if (!g_lock_ready && InterlockedCompareExchange(&g_lock_ready, 1, 0) == 0)
-    {
-        InitializeCriticalSection(&g_lock);
-        InterlockedExchange(&g_lock_ready, 2);
-    }
-    while (g_lock_ready != 2)
-        Sleep(0);
-}
+static SRWLOCK g_lock = SRWLOCK_INIT;
 
 void lock(void)
 {
-    lock_init();
-    EnterCriticalSection(&g_lock);
+    AcquireSRWLockExclusive(&g_lock);
 }
 
 void unlock(void)
 {
-    LeaveCriticalSection(&g_lock);
+    ReleaseSRWLockExclusive(&g_lock);
 }
-
 
 /* --- context wrapper --- */
 
