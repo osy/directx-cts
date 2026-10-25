@@ -273,12 +273,8 @@ def main() -> int:
 
     files = sum(1 for _ in out.rglob("*") if _.is_file())
     eprint(f"\nstaged {files} files -> {out}  (target: {args.target})")
-    if staged_shims:
-        eprint(f"shims: {', '.join(s.module for s in staged_shims)}")
-    if staged_backends:
-        eprint(f"backends: {', '.join(staged_backends)} (applied only with --backend)")
-    else:
-        eprint("shims: none (the target platform provides these modules itself)")
+    eprint(f"shims: {', '.join(s.module for s in staged_shims)}")
+    eprint(f"backends: {', '.join(staged_backends)} (applied only with --backend)")
     if applied:
         for new, who in sorted(applied.items()):
             eprint(f"rewrote {len(who)} binaries -> {new}")
