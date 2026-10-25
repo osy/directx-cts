@@ -43,7 +43,6 @@ int dm_knob_depth_stencil_upload(void); /* CPU writes keep their stencil plane *
 int dm_knob_bc_copy(void);          /* BC -> uncompressed and overlapping copies */
 int dm_knob_device_reuse(void);     /* released D3D11 devices are parked and reused */
 int dm_knob_drain_deletes(void);    /* flush every 256 texture creates */
-int dm_knob_pin_crypto(void);       /* keep bcrypt/crypt32 loaded */
 int dm_knob_enqueue_set_event(void);/* IDXGIDevice2::EnqueueSetEvent via a fence */
 int dm_knob_minprec_position(void); /* refuse a PS with min-precision SV_Position */
 int dm_knob_d3d12_feature_support(void);

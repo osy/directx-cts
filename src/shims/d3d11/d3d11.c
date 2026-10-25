@@ -28,6 +28,7 @@
 
 DXCTS_KNOB(patch_device_probe,  "DXCTS_D3D11_DEVICE_PROBE_IFACE",  1, 0)
 DXCTS_KNOB(patch_verifier,      "DXCTS_D3D11_LOAD_VERIFIER",       1, 0)
+DXCTS_KNOB(patch_pin_crypto,    "DXCTS_D3D11_PIN_CRYPTO",          1, 0)
 
 typedef void (WINAPI *get_context_fn)(void *self, void **context);
 typedef HRESULT (WINAPI *create_deferred_fn)(void *self, UINT flags, void **context);
@@ -85,6 +86,25 @@ static void ensure_verifier_present(void)
         return;
     if (!GetModuleHandleA("D3DDriverVerifier.dll"))
         LoadLibraryA("D3DDriverVerifier.dll");
+}
+
+/*
+ * The HLK's shader compiler (D3DCompiler_Test.dll) hashes every shader it builds
+ * through CryptAcquireContext/CryptReleaseContext, which load and free bcrypt.dll and
+ * crypt32.dll each time.  Under Wine the last FreeLibrary unloads the module's unix
+ * half, and every load/unload pair leaks dyld state that is never reclaimed: on a
+ * large group the process grows to gigabytes of "dyld private memory" and the case
+ * rate decays until the group times out, whatever the D3D implementation.  Holding a
+ * reference of our own keeps both loaded; deliberately never freed.
+ */
+static void pin_crypto_modules(void)
+{
+    static LONG done;
+
+    if (!patch_pin_crypto() || InterlockedCompareExchange(&done, 1, 0) != 0)
+        return;
+    LoadLibraryA("bcrypt.dll");
+    LoadLibraryA("crypt32.dll");
 }
 
 /* --- context wrapper --- */
@@ -397,6 +417,7 @@ HRESULT D3D11_API dxcts_create_device(void *adapter, UINT driver_type,
         looked_up = 1;
     }
     ensure_verifier_present();
+    pin_crypto_modules();
 
     hr = backend ? backend(fn, adapter, driver_type, software, flags, feature_levels,
                            num_feature_levels, sdk_version, device, feature_level,
@@ -436,6 +457,7 @@ HRESULT D3D11_API dxcts_create_device_and_swapchain(
         looked_up = 1;
     }
     ensure_verifier_present();
+    pin_crypto_modules();
 
     hr = backend ? backend(fn, adapter, driver_type, software, flags, feature_levels,
                            num_feature_levels, sdk_version, swapchain_desc, swapchain,

@@ -27,7 +27,6 @@ DM_KNOB(dm_knob_depth_stencil_upload, "DXCTS_D3DMETAL_DEPTH_STENCIL_UPLOAD")
 DM_KNOB(dm_knob_bc_copy,              "DXCTS_D3DMETAL_BC_COPY")
 DM_KNOB(dm_knob_device_reuse,         "DXCTS_D3DMETAL_DEVICE_REUSE")
 DM_KNOB(dm_knob_drain_deletes,        "DXCTS_D3DMETAL_DRAIN_DELETES")
-DM_KNOB(dm_knob_pin_crypto,           "DXCTS_D3DMETAL_PIN_CRYPTO")
 DM_KNOB(dm_knob_enqueue_set_event,    "DXCTS_D3DMETAL_ENQUEUE_SET_EVENT")
 DM_KNOB(dm_knob_minprec_position,     "DXCTS_D3DMETAL_MINPREC_SV_POSITION")
 DM_KNOB(dm_knob_d3d12_feature_support,"DXCTS_D3DMETAL_D3D12_FEATURE_SUPPORT")
@@ -141,10 +140,6 @@ static const workaround k_workarounds[] = {
       "flushes the immediate context every 256 texture creates",
       "the host defers destroying released resources until a flush and walks the "
       "backlog on every create", 0 },
-    { "d3dmetal/pin-crypto", dm_knob_pin_crypto,
-      "keeps bcrypt and crypt32 loaded",
-      "the host loads and frees both around every shader hash, and under Wine each "
-      "cycle leaks dyld state", 0 },
     { "d3dmetal/enqueue-set-event", dm_knob_enqueue_set_event,
       "implements IDXGIDevice2::EnqueueSetEvent with a fence where the host answers "
       "E_NOTIMPL",

@@ -146,6 +146,7 @@ things the *platform* lacks, so their defaults differ between Wine and Windows.
 |---|---|---|---|
 | `DXCTS_D3D11_DEVICE_PROBE_IFACE` | on | off | answer the undocumented device interface eight binaries query |
 | `DXCTS_D3D11_LOAD_VERIFIER` | on | off | load D3DDriverVerifier.dll before the device exists |
+| `DXCTS_D3D11_PIN_CRYPTO` | on | off | keep bcrypt and crypt32 loaded (the HLK's shader compiler loads and frees both around every hash; under Wine each cycle leaks dyld state) |
 | `DXCTS_D3DKMT_ADAPTER_NAME_FALLBACK` | on | off | fall back to the primary GDI display name |
 | `DXCTS_D3DKMT_ADAPTER_INFO_FALLBACK` | on | off | answer the adapter-type query the classifier needs |
 
@@ -211,7 +212,6 @@ D3DMetal. Each is a knob, `DXCTS_D3DMETAL_<WHAT>`, on whenever the layer is sele
 | `BC_COPY` | serve block-compressed to uncompressed copies through a staging readback, and overlapping same-resource 3D copies through a temporary |
 | `DEVICE_REUSE` | park a released D3D11 device and serve the next create with the same arguments from it (D3DMetal never frees one: 256 MiB per create/release cycle, and the HLK creates a device per case) |
 | `DRAIN_DELETES` | flush every 256 texture creates (the host defers destroying released resources until a flush) |
-| `PIN_CRYPTO` | keep bcrypt and crypt32 loaded (the host loads and frees both around every shader hash; under Wine each cycle leaks dyld state) |
 | `ENQUEUE_SET_EVENT` | implement IDXGIDevice2::EnqueueSetEvent with a fence where the host answers E_NOTIMPL |
 | `MINPREC_SV_POSITION` | refuse a pixel shader declaring minimum precision on SV_Position (the host deadlocks drawing with one) |
 | `D3D12_FEATURE_SUPPORT` | answer "not supported" where D3D12 CheckFeatureSupport returns E_INVALIDARG |

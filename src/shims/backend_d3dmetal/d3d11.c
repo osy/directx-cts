@@ -3936,24 +3936,6 @@ static void *wrap_device(void *device, const dev_key *key, int reusable, UINT le
     return w;
 }
 
-/*
- * The host hashes shader bytecode to key its shader cache, and loads and frees
- * bcrypt.dll and crypt32.dll around doing it.  Under Wine each FreeLibrary drops the
- * last reference to the module's unix half, and every load/unload pair makes dyld
- * rebuild the image atlas it publishes for debuggers - an allocation that is never
- * reclaimed (~540 KB per test case, with the case rate decaying in step).  Holding a
- * reference of our own keeps both loaded; deliberately never freed.
- */
-static void pin_crypto_modules(void)
-{
-    static LONG done;
-
-    if (!dm_knob_pin_crypto() || InterlockedCompareExchange(&done, 1, 0) != 0)
-        return;
-    LoadLibraryA("bcrypt.dll");
-    LoadLibraryA("crypt32.dll");
-}
-
 /* --- entry points --- */
 
 HRESULT WINAPI dm_d3d11_create_device(dxcts_d3d11_create_fn real, void *adapter,
@@ -3971,7 +3953,6 @@ HRESULT WINAPI dm_d3d11_create_device(dxcts_d3d11_create_fn real, void *adapter,
     if (!dxcts_wrap_supported())
         return real(adapter, driver_type, software, flags, feature_levels,
                     num_feature_levels, sdk_version, device, feature_level, context);
-    pin_crypto_modules();
     reusable = dev_key_of(adapter, driver_type, software, flags, feature_levels,
                           num_feature_levels, sdk_version, &key);
     if (reusable && device && dm_knob_device_reuse())
@@ -4025,7 +4006,6 @@ HRESULT WINAPI dm_d3d11_create_device_and_swapchain(
         return real(adapter, driver_type, software, flags, feature_levels,
                     num_feature_levels, sdk_version, swapchain_desc, swapchain, device,
                     feature_level, context);
-    pin_crypto_modules();
     hr = real(adapter, driver_type, software, flags, feature_levels, num_feature_levels,
               sdk_version, swapchain_desc, swapchain, device, &level, context);
     if (feature_level)
