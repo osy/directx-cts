@@ -462,12 +462,12 @@ the kit makes, so a binary that starts importing a new one still loads.
 Two tools read the reports back:
 
     ./tools/parity.py reference.json candidate.json [--binary NAME] [--all] [--reasons]
-    ./tools/failure_report.py report.json staging/x64/dxcts-out
+    ./tools/failure_report.py report.json
 
 `parity.py` compares two runs group by group and lists where the second falls short of
 the first - fewer passes, fewer cases enumerated, or a group that timed out or wedged -
-which is how a shim change is shown to have cost nothing. `failure_report.py` buckets a
-run's failures by group, names each group's dominant reason out of its log, and flags
+which is how a shim change is shown to have cost nothing. `failure_report.py` lists a
+run's failing groups with the dominant reason the report carries for each, and flags
 the reasons that point at something this suite supplies rather than at the
 implementation.
 
