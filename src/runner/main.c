@@ -673,12 +673,6 @@ static int selected(const catalog_entry *e, const options *o)
 
 /* --- event stream --- */
 
-/*
- * A group name is not unique: the framework runs every parameter combination in a
- * group under that group's name, so WGF11Clipping's six groups produce 155 cases.
- * Each start/end pair is therefore its own record, and an end completes the most
- * recent open record with a matching name from the same process.
- */
 /* Case names repeat (a WGF group logs every case under its own name), so each distinct
  * one is stored once for the life of the run. */
 static const char *intern(const char *name)
@@ -722,6 +716,12 @@ static const char *intern(const char *name)
     return table[h];
 }
 
+/*
+ * A group name is not unique: the framework runs every parameter combination in a
+ * group under that group's name, so WGF11Clipping's six groups produce 155 cases.
+ * Each start/end pair is therefore its own record, and an end completes the most
+ * recent open record with a matching name from the same process.
+ */
 static case_record *open_case(run_record *r, const char *name, unsigned long pid)
 {
     case_record *c;
@@ -821,6 +821,8 @@ static void read_events(run_record *r, const char *path)
 }
 
 /*
+ * One line of a file opened "rb", with NUL bytes and carriage returns dropped.
+ *
  * TE.exe writes UTF-16 and the framework binaries write ASCII - and worse, the host
  * implementation logs ASCII into TE.exe's UTF-16 stdout, one line at a time.  An
  * odd-length insertion shifts every character after it by a byte, so a reader that
@@ -831,11 +833,6 @@ static void read_events(run_record *r, const char *path)
  * Everything matched here is ASCII in either encoding, so the NUL bytes are simply
  * dropped and the rest read as bytes.  That is immune to where the insertions land.
  */
-static FILE *open_text(const char *path)
-{
-    return fopen(path, "rb");
-}
-
 static int read_text_line(FILE *fh, char *line, size_t cap)
 {
     size_t len = 0;
@@ -878,7 +875,7 @@ static int read_text_line(FILE *fh, char *line, size_t cap)
 
 static void read_taef_console(run_record *r, const char *path)
 {
-    FILE *fh = open_text(path);
+    FILE *fh = fopen(path, "rb");
     char line[1024];
 
     if (!fh)
@@ -1416,11 +1413,6 @@ static int build_command(char *cmd, size_t cap, const catalog_entry *e,
 #define LIST_GROUPS_TIMEOUT_MS 60000
 
 /*
- * Tests spawn helpers, and TerminateProcess only ends the one process it is given.  A
- * job with kill-on-close takes the whole tree down together, so an orphan cannot
- * outlive its run and compete for the GPU with the next one.
- */
-/*
  * The token the tests run under.
  *
  * Some tests refuse to run without an elevated token ("This test must be run
@@ -1566,6 +1558,11 @@ static BOOL start_process(char *cmd, BOOL inherit, const char *cwd, STARTUPINFOA
                           si, pi);
 }
 
+/*
+ * Tests spawn helpers, and TerminateProcess only ends the one process it is given.  A
+ * job with kill-on-close takes the whole tree down together, so an orphan cannot
+ * outlive its run and compete for the GPU with the next one.
+ */
 static HANDLE make_kill_on_close_job(void)
 {
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits;
@@ -1740,7 +1737,7 @@ static int list_groups_wgf(const catalog_entry *e, const char *logdir,
     if (!capture_listing(cmd, logdir, NULL, path, sizeof(path)))
         return list_groups_wgf_csv(e, logdir, groups);
 
-    fh = open_text(path);
+    fh = fopen(path, "rb");
     if (!fh)
         return 0;
     while (read_text_line(fh, line, sizeof(line)))
@@ -1806,7 +1803,7 @@ static int list_groups_taef(const catalog_entry *e, const char *logdir,
     if (!capture_listing(cmd, logdir, NULL, path, sizeof(path)))
         return 0;
 
-    fh = open_text(path);
+    fh = fopen(path, "rb");
     if (!fh)
         return 0;
     while (read_text_line(fh, line, sizeof(line)))
@@ -1861,7 +1858,7 @@ static int list_groups_gtest(const catalog_entry *e, const char *logdir,
     snprintf(cmd, sizeof(cmd), "\"%s\" --gtest_list_tests", e->binary);
     if (!capture_listing(cmd, logdir, NULL, path, sizeof(path)))
         return 0;
-    fh = open_text(path);
+    fh = fopen(path, "rb");
     if (!fh)
         return 0;
     while (read_text_line(fh, line, sizeof(line)))
@@ -2397,54 +2394,37 @@ static void reason_add(failure_reason *out, int *count, const char *text)
     }
 }
 
-/* The log is UTF-16; read it as bytes and drop the zeroes rather than pull in a
- * conversion the rest of the runner does not need. */
 static int collect_reasons(const char *path, failure_reason *out)
 {
     char line[512], best[512];
-    int count = 0, have_best = 0, c;
+    int count = 0, have_best = 0;
     FILE *fh = fopen(path, "rb");
-    size_t n = 0;
 
     if (!fh)
         return 0;
-    line[0] = best[0] = 0;
-    while ((c = fgetc(fh)) != EOF)
+    best[0] = 0;
+    while (read_text_line(fh, line, sizeof(line)))
     {
-        if (c == 0 || c == '\r')
-            continue;
-        if (c != '\n')
-        {
-            if (n + 1 < sizeof(line))
-                line[n++] = (char)c;
-            continue;
-        }
-        line[n] = 0;
-        n = 0;
-        {
-            char *t = line;
-            size_t len;
+        char *t = line;
+        size_t len;
 
-            while (*t == ' ' || *t == '\t')
-                t++;
-            len = strlen(t);
-            while (len && (t[len - 1] == ' ' || t[len - 1] == '\t'))
-                t[--len] = 0;
-            if (strncmp(t, "Start:", 6) == 0)
-                have_best = 0;
-            else if (strncmp(t, "End: Fail", 9) == 0)
-            {
-                reason_add(out, &count, have_best ? best : "(no reason logged)");
-                have_best = 0;
-            }
-            else if (!reason_is_noise(t) && !reason_is_parameter(t))
-            {
-                if (!have_best || !reason_is_wrapper(t))
-                {
-                    snprintf(best, sizeof(best), "%s", t);
-                    have_best = 1;
-                }
-            }
+        while (*t == ' ' || *t == '\t')
+            t++;
+        len = strlen(t);
+        while (len && (t[len - 1] == ' ' || t[len - 1] == '\t'))
+            t[--len] = 0;
+        if (strncmp(t, "Start:", 6) == 0)
+            have_best = 0;
+        else if (strncmp(t, "End: Fail", 9) == 0)
+        {
+            reason_add(out, &count, have_best ? best : "(no reason logged)");
+            have_best = 0;
+        }
+        else if (!reason_is_noise(t) && !reason_is_parameter(t)
+                 && (!have_best || !reason_is_wrapper(t)))
+        {
+            snprintf(best, sizeof(best), "%s", t);
+            have_best = 1;
         }
     }
     fclose(fh);
@@ -2538,7 +2518,7 @@ static long last_logged_case(const char *log)
 {
     char line[512];
     long prev = -1, last = 0;
-    FILE *fh = open_text(log);
+    FILE *fh = fopen(log, "rb");
 
     if (!fh)
         return 0;
@@ -2609,6 +2589,26 @@ static long next_case(const catalog_entry *e, const options *o, const char *logd
 static int spawn_wgf9_group(const catalog_entry *e, const options *o, const char *logdir,
                             const char *tag, const char *group, run_record *part);
 
+/* A case the process died in: recorded as started and never ended, and named. */
+static void note_crash(run_record *part, const catalog_entry *e, const char *group,
+                       long number, const char *next)
+{
+    case_record *c = open_case(part, group, 0);
+
+    if (c)
+        c->executed = 1;
+    snprintf(part->crashed + strlen(part->crashed),
+             sizeof(part->crashed) - strlen(part->crashed), "%s%ld",
+             part->crashed[0] ? "," : "", number);
+    part->crash_count++;
+    if (g_progress)
+    {
+        fprintf(g_progress, "    crash: %s %s case %ld (exit 0x%08lx); %s\n", e->binary,
+                group, number, (unsigned long)part->exit_code, next);
+        fflush(g_progress);
+    }
+}
+
 static int spawn_group(const catalog_entry *e, const options *o, const char *logdir,
                        const char *tag, const char *group, run_record *part)
 {
@@ -2628,7 +2628,6 @@ static int spawn_group(const catalog_entry *e, const options *o, const char *log
     {
         char log[MAX_PATH];
         long done, crashed;
-        case_record *c;
 
         snprintf(log, sizeof(log), "%s\\%s.log", logdir, attempt_tag);
         done = last_logged_case(log);
@@ -2637,19 +2636,7 @@ static int spawn_group(const catalog_entry *e, const options *o, const char *log
         crashed = next_case(e, o, logdir, tag, group, done);
         if (!crashed)
             break;              /* died after its last case: nothing left to run */
-        c = open_case(part, group, 0);
-        if (c)
-            c->executed = 1;    /* started, never ended: incomplete */
-        snprintf(part->crashed + strlen(part->crashed),
-                 sizeof(part->crashed) - strlen(part->crashed), "%s%ld",
-                 part->crashed[0] ? "," : "", crashed);
-        part->crash_count++;
-        if (g_progress)
-        {
-            fprintf(g_progress, "    crash: %s %s case %ld (exit 0x%08lx); resuming after it\n",
-                    e->binary, group, crashed, (unsigned long)part->exit_code);
-            fflush(g_progress);
-        }
+        note_crash(part, e, group, crashed, "resuming after it");
         skipped_to = crashed;
         snprintf(g_resume_skip, sizeof(g_resume_skip), "1-%ld", crashed);
         snprintf(attempt_tag, sizeof(attempt_tag), "%s-r%d", tag, ++resumes);
@@ -2692,7 +2679,7 @@ static void scan_wgf9_log(const char *log, long *last_case, long *unfinished)
     char line[512];
     long current = 0;
     int numbered = 1, cleanup = 0, open = 0;
-    FILE *fh = open_text(log);
+    FILE *fh = fopen(log, "rb");
 
     *last_case = -1;
     *unfinished = 0;
@@ -2783,22 +2770,7 @@ static int spawn_wgf9_group(const catalog_entry *e, const options *o, const char
             last_case = found;
         crashed = ok && crashed_exit(part) && unfinished > 0;
         if (crashed)
-        {
-            case_record *c = open_case(part, group, 0);
-
-            if (c)
-                c->executed = 1;    /* started, never ended: incomplete */
-            snprintf(part->crashed + strlen(part->crashed),
-                     sizeof(part->crashed) - strlen(part->crashed), "%s%ld",
-                     part->crashed[0] ? "," : "", unfinished);
-            part->crash_count++;
-            if (g_progress)
-            {
-                fprintf(g_progress, "    crash: %s %s case %ld (exit 0x%08lx); next range\n",
-                        e->binary, group, unfinished, (unsigned long)part->exit_code);
-                fflush(g_progress);
-            }
-        }
+            note_crash(part, e, group, unfinished, "next range");
         if (!ok || part->timed_out || part->wedged)
             break;
         /* the group's end is known and inside this range, or this range was the last
@@ -2839,6 +2811,23 @@ static void record_case_exclusions(run_record *r, const catalog_entry *e, const 
             add_applied(r, sel ? sel : g_exclusions[i].group, &g_exclusions[i]);
 }
 
+/* The binary as one process, or the one group --group named. */
+static int run_whole(const catalog_entry *e, const options *o, const char *logdir,
+                     const char *group, run_record *out)
+{
+    char tag[256];
+    int ok;
+
+    tag_of(e, NULL, tag, sizeof(tag));
+    record_case_exclusions(out, e, group);
+    ok = group ? spawn_group(e, o, logdir, tag, group, out)
+               : spawn_test(e, o, logdir, tag, NULL, out);
+    out->suspect_pass = tainted_passes(out);
+    out->slow = o->slow_s && out->seconds > (double)o->slow_s;
+    collect_binary_reasons(out, logdir, tag);
+    return ok;
+}
+
 static int run_one(const catalog_entry *e, const options *o, const char *logdir,
                    run_record *out)
 {
@@ -2852,9 +2841,7 @@ static int run_one(const catalog_entry *e, const options *o, const char *logdir,
     apply_requests(e, o);
     deploy_data(e);
 
-    if (!o->per_group || o->group
-        || (strcmp(e->harness, "wgf") && strcmp(e->harness, "wgf9")
-            && strcmp(e->harness, "taef") && strcmp(e->harness, "gtest")))
+    if (!o->per_group || o->group)
     {
         exclusion *x = o->group ? group_exclusion(e, o->group) : NULL;
 
@@ -2864,27 +2851,12 @@ static int run_one(const catalog_entry *e, const options *o, const char *logdir,
             add_applied(out, o->group, x);
             return 1;
         }
-        tag_of(e, NULL, tag, sizeof(tag));
-        record_case_exclusions(out, e, o->group);
-        ok = o->group ? spawn_group(e, o, logdir, tag, o->group, out)
-                      : spawn_test(e, o, logdir, tag, NULL, out);
-        out->suspect_pass = tainted_passes(out);
-        out->slow = o->slow_s && out->seconds > (double)o->slow_s;
-        collect_binary_reasons(out, logdir, tag);
-        return ok;
+        return run_whole(e, o, logdir, o->group, out);
     }
 
     count = list_groups(e, logdir, groups);
     if (count <= 0)
-    {
-        tag_of(e, NULL, tag, sizeof(tag));
-        record_case_exclusions(out, e, NULL);
-        ok = spawn_test(e, o, logdir, tag, NULL, out);
-        out->suspect_pass = tainted_passes(out);
-        out->slow = o->slow_s && out->seconds > (double)o->slow_s;
-        collect_binary_reasons(out, logdir, tag);
-        return ok;
-    }
+        return run_whole(e, o, logdir, NULL, out);
 
     /* One process per group: a group that wedges the host costs its own timeout and
      * nothing after it. */
@@ -2946,22 +2918,13 @@ static int run_one(const catalog_entry *e, const options *o, const char *logdir,
             snprintf(g->crashed, sizeof(g->crashed), "%s", part.crashed);
             g->crash_count = part.crash_count;
             g->slow = o->slow_s && part.seconds > (double)o->slow_s;
-            {
-                int j, failed = 0;
-
-                for (j = 0; j < part.case_count; j++)
-                    if (part.cases[j].have_result && part.cases[j].result == 2)
-                        failed = 1;
-                if (!failed)
-                    goto no_reasons;
-            }
+            if (any_failed(&part))
             {
                 char log[MAX_PATH];
 
                 snprintf(log, sizeof(log), "%s\\%s.log", logdir, tag);
                 g->reason_count = collect_reasons(log, g->reasons);
             }
-no_reasons:;
             if (g->slow && !part.timed_out && g_progress)
             {
                 fprintf(g_progress, "    slow: %s %s took %.0fs\n", e->binary,
@@ -3089,6 +3052,23 @@ static void warn_if_metal_will_abort(void)
             "       MTL_ERROR_MODE=nslog in the environment.\n");
 }
 
+static void write_reasons(json_writer *w, const failure_reason *reasons, int count)
+{
+    int i;
+
+    if (!count)
+        return;
+    json_array_begin(w, "failure_reasons");
+    for (i = 0; i < count; i++)
+    {
+        json_object_begin(w, NULL);
+        json_str(w, "reason", reasons[i].text);
+        json_int(w, "cases", reasons[i].count);
+        json_object_end(w);
+    }
+    json_array_end(w);
+}
+
 static void write_report(FILE *fh, run_record *runs, int count, const options *o)
 {
     long long totals[VERDICT_COUNT] = { 0 };
@@ -3192,20 +3172,7 @@ static void write_report(FILE *fh, run_record *runs, int count, const options *o
         }
         if (r->have_harness_total)
             json_int(&w, "harness_reported_cases", r->harness_total);
-        if (r->reason_count)
-        {
-            int k;
-
-            json_array_begin(&w, "failure_reasons");
-            for (k = 0; k < r->reason_count; k++)
-            {
-                json_object_begin(&w, NULL);
-                json_str(&w, "reason", r->reasons[k].text);
-                json_int(&w, "cases", r->reasons[k].count);
-                json_object_end(&w);
-            }
-            json_array_end(&w);
-        }
+        write_reasons(&w, r->reasons, r->reason_count);
 
         if (r->group_count)
         {
@@ -3234,20 +3201,7 @@ static void write_report(FILE *fh, run_record *runs, int count, const options *o
                     json_int(&w, "crashes", r->groups[g].crash_count);
                     json_str(&w, "crashed_cases", r->groups[g].crashed);
                 }
-                if (r->groups[g].reason_count)
-                {
-                    int i;
-
-                    json_array_begin(&w, "failure_reasons");
-                    for (i = 0; i < r->groups[g].reason_count; i++)
-                    {
-                        json_object_begin(&w, NULL);
-                        json_str(&w, "reason", r->groups[g].reasons[i].text);
-                        json_int(&w, "cases", r->groups[g].reasons[i].count);
-                        json_object_end(&w);
-                    }
-                    json_array_end(&w);
-                }
+                write_reasons(&w, r->groups[g].reasons, r->groups[g].reason_count);
                 json_object_end(&w);
             }
             json_array_end(&w);
