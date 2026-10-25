@@ -11,9 +11,9 @@
  *             DXCTS_KNOB, named DXCTS_<SHIM>_<WHAT>, overridden per run with
  *             DXCTS_<SHIM>_<WHAT>=0 or =1.
  *
- * A knob's default differs between Wine and Windows because the defects do: almost
- * every workaround here is for something the host D3D implementation gets wrong under
- * Wine, and applying it on Windows would mask a genuine conformance failure instead.
+ * A base shim's knob is for something Wine lacks, so its default differs between Wine
+ * and Windows: applied on Windows it would mask a genuine conformance failure instead.
+ * A backend layer's knobs are on whenever the layer is selected (common/backend.h).
  * DXCTS_NO_PATCHES=1 turns every knob off at once.
  *
  * Workarounds without a knob are the ones the tests cannot launch without on either
