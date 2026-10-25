@@ -78,7 +78,7 @@ static ULONG WINAPI ctx_release(void *self)
     if (refs == 0)
     {
         dxcts_release(twin);
-        dxcts_wrapper_release(device);
+        dxcts_release(device);
     }
     return refs;
 }
@@ -168,7 +168,7 @@ static void *wrap_context(dm_device *device, void *ctx)
         unlock();
         /* the wrapper took over the caller's reference; take it back */
         dxcts_addref(ctx);
-        dxcts_wrapper_release(device);
+        dxcts_release(device);
         dxcts_wrapper_release(w);
         return ctx;
     }
