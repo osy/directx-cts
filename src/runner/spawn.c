@@ -184,7 +184,10 @@ static int build_command(char *cmd, size_t cap, const catalog_entry *e,
         append(cmd, cap, " -GraphicsFinishTime:%s -QueryTimeout:%s",
                o->graphics_finish_ms ? o->graphics_finish_ms : "1000",
                o->query_timeout_ms ? o->query_timeout_ms : "1000");
-        if (o->sample)
+        /* The D3D9-era generation has no -Random: it runs every case regardless. */
+        if (o->sample && !strcmp(e->harness, "wgf9"))
+            ignored |= SELECTOR_SAMPLE;
+        else if (o->sample)
             append(cmd, cap, " -Random:%s -Seed:%s", o->sample,
                    o->seed ? o->seed : "1");
     }
@@ -733,7 +736,7 @@ static int spawn_group(const catalog_entry *e, const options *o, const char *log
     long skipped_to = 0;
     int ok, resumes = 0;
 
-    if (!strcmp(e->harness, "wgf9") && !o->sample)
+    if (!strcmp(e->harness, "wgf9"))
         return spawn_wgf9_group(e, o, logdir, tag, group, part);
     ok = spawn_test(e, o, logdir, tag, group, &range, part);
     snprintf(attempt_tag, sizeof(attempt_tag), "%s", tag);
