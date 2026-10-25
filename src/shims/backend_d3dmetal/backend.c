@@ -8,8 +8,6 @@
 #include "../../common/events.h"
 #include "../../common/shim.h"
 
-#define BACKEND_API __declspec(dllexport) WINAPI
-
 /* On whenever this layer is selected, on either platform: selecting the layer is the
  * platform judgement, and each knob is only a way of measuring one workaround. */
 #define DM_KNOB(fn, name) DXCTS_KNOB(fn##_knob, name, 1, 1) \
@@ -33,7 +31,7 @@ DM_KNOB(dm_knob_d3d12_feature_support,"DXCTS_D3DMETAL_D3D12_FEATURE_SUPPORT")
 
 dm_counters dm_counts;
 
-HRESULT BACKEND_API dxcts_backend_d3d11_create_device(
+HRESULT WINAPI dxcts_backend_d3d11_create_device(
     dxcts_d3d11_create_fn real, void *adapter, UINT driver_type, HMODULE software,
     UINT flags, const void *feature_levels, UINT num_feature_levels, UINT sdk_version,
     void **device, UINT *feature_level, void **context)
@@ -43,7 +41,7 @@ HRESULT BACKEND_API dxcts_backend_d3d11_create_device(
                                   device, feature_level, context);
 }
 
-HRESULT BACKEND_API dxcts_backend_d3d11_create_device_and_swapchain(
+HRESULT WINAPI dxcts_backend_d3d11_create_device_and_swapchain(
     dxcts_d3d11_create_swapchain_fn real, void *adapter, UINT driver_type,
     HMODULE software, UINT flags, const void *feature_levels, UINT num_feature_levels,
     UINT sdk_version, const void *swapchain_desc, void **swapchain, void **device,
@@ -56,10 +54,10 @@ HRESULT BACKEND_API dxcts_backend_d3d11_create_device_and_swapchain(
                                                 feature_level, context);
 }
 
-HRESULT BACKEND_API dxcts_backend_d3d12_create_device(dxcts_d3d12_create_fn real,
-                                                      void *adapter,
-                                                      UINT min_feature_level,
-                                                      const GUID *iid, void **device)
+HRESULT WINAPI dxcts_backend_d3d12_create_device(dxcts_d3d12_create_fn real,
+                                                 void *adapter,
+                                                 UINT min_feature_level,
+                                                 const GUID *iid, void **device)
 {
     return dm_d3d12_create_device(real, adapter, min_feature_level, iid, device);
 }
@@ -154,9 +152,9 @@ static const workaround k_workarounds[] = {
 };
 
 /* The i-th workaround, for the runner's report; 0 past the end. */
-int BACKEND_API dxcts_backend_workaround(int i, const char **name, int *active,
-                                         const char **what, const char **why,
-                                         int *alters_results)
+int WINAPI dxcts_backend_workaround(int i, const char **name, int *active,
+                                    const char **what, const char **why,
+                                    int *alters_results)
 {
     const workaround *w;
 

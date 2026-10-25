@@ -22,8 +22,6 @@
 #include "../../common/knob.h"
 #include "../../common/shim.h"
 
-#define D3D11_API __declspec(dllexport) WINAPI
-
 #define SLOT  DXCTS_SLOT
 #define WIDTH DXCTS_WIDTH
 
@@ -362,12 +360,12 @@ static void wrap_created(void **device, void **context)
     *device = wrapped;
 }
 
-HRESULT D3D11_API dxcts_create_device(void *adapter, UINT driver_type,
-                                      HMODULE software, UINT flags,
-                                      const void *feature_levels,
-                                      UINT num_feature_levels, UINT sdk_version,
-                                      void **device, UINT *feature_level,
-                                      void **context)
+HRESULT WINAPI dxcts_create_device(void *adapter, UINT driver_type,
+                                   HMODULE software, UINT flags,
+                                   const void *feature_levels,
+                                   UINT num_feature_levels, UINT sdk_version,
+                                   void **device, UINT *feature_level,
+                                   void **context)
 {
     static dxcts_d3d11_create_fn fn;
     static dxcts_backend_d3d11_create_fn backend;
@@ -403,7 +401,7 @@ HRESULT D3D11_API dxcts_create_device(void *adapter, UINT driver_type,
  * test to obtain a device with none of the corrections above - the swapchain variant is
  * how twelve of the kit's binaries create theirs.
  */
-HRESULT D3D11_API dxcts_create_device_and_swapchain(
+HRESULT WINAPI dxcts_create_device_and_swapchain(
     void *adapter, UINT driver_type, HMODULE software, UINT flags,
     const void *feature_levels, UINT num_feature_levels, UINT sdk_version,
     const void *swapchain_desc, void **swapchain, void **device, UINT *feature_level,
@@ -445,8 +443,8 @@ HRESULT D3D11_API dxcts_create_device_and_swapchain(
  * of each test runnable.  Where the platform's own d3d11 has it - Windows, where this
  * shim is staged for the backend hand-off - the call is forwarded.
  */
-HRESULT D3D11_API CreateDirect3D11DeviceFromDXGIDevice(void *dxgi_device,
-                                                       void **graphics_device)
+HRESULT WINAPI CreateDirect3D11DeviceFromDXGIDevice(void *dxgi_device,
+                                                    void **graphics_device)
 {
     static create_from_dxgi_fn fn;
     static int looked_up;

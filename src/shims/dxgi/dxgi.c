@@ -15,8 +15,6 @@
 #include "../../common/knob.h"
 #include "../../common/shim.h"
 
-#define DXGI_API __declspec(dllexport) WINAPI
-
 #define SLOT  DXCTS_SLOT
 #define WIDTH DXCTS_WIDTH
 
@@ -508,7 +506,7 @@ static HRESULT wrap_created_factory(HRESULT hr, const GUID *iid, void **out)
     return hr;
 }
 
-HRESULT DXGI_API dxcts_create_factory(const GUID *iid, void **out)
+HRESULT WINAPI dxcts_create_factory(const GUID *iid, void **out)
 {
     static create_factory_fn fn;
 
@@ -519,7 +517,7 @@ HRESULT DXGI_API dxcts_create_factory(const GUID *iid, void **out)
     return wrap_created_factory(fn(iid, out), iid, out);
 }
 
-HRESULT DXGI_API dxcts_create_factory1(const GUID *iid, void **out)
+HRESULT WINAPI dxcts_create_factory1(const GUID *iid, void **out)
 {
     static create_factory_fn fn;
 
@@ -530,7 +528,7 @@ HRESULT DXGI_API dxcts_create_factory1(const GUID *iid, void **out)
     return wrap_created_factory(fn(iid, out), iid, out);
 }
 
-HRESULT DXGI_API dxcts_create_factory2(UINT flags, const GUID *iid, void **out)
+HRESULT WINAPI dxcts_create_factory2(UINT flags, const GUID *iid, void **out)
 {
     static create_factory2_fn fn;
 

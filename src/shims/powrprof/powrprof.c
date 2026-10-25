@@ -17,11 +17,9 @@
 
 #include "../../common/shim.h"
 
-#define PWR_API __declspec(dllexport) WINAPI
-
 #define READ_INDEX(name)                                                   \
-    DWORD PWR_API name(HKEY root, const GUID *scheme, const GUID *subgroup, \
-                       const GUID *setting, LPDWORD value)                 \
+    DWORD WINAPI name(HKEY root, const GUID *scheme, const GUID *subgroup, \
+                      const GUID *setting, LPDWORD value)                  \
     {                                                                      \
         (void)root; (void)scheme; (void)subgroup; (void)setting;           \
         if (value)                                                         \
@@ -35,8 +33,8 @@ READ_INDEX(PowerReadACDefaultIndex)
 READ_INDEX(PowerReadDCDefaultIndex)
 
 #define READ_BOUND(name)                                                   \
-    DWORD PWR_API name(HKEY root, const GUID *subgroup,                    \
-                       const GUID *setting, LPDWORD value)                 \
+    DWORD WINAPI name(HKEY root, const GUID *subgroup,                    \
+                      const GUID *setting, LPDWORD value)                  \
     {                                                                      \
         (void)root; (void)subgroup; (void)setting;                         \
         if (value)                                                         \
@@ -48,8 +46,8 @@ READ_BOUND(PowerReadValueMax)
 READ_BOUND(PowerReadValueMin)
 
 #define WRITE_INDEX(name)                                                  \
-    DWORD PWR_API name(HKEY root, const GUID *scheme, const GUID *subgroup, \
-                       const GUID *setting, DWORD value)                   \
+    DWORD WINAPI name(HKEY root, const GUID *scheme, const GUID *subgroup, \
+                      const GUID *setting, DWORD value)                    \
     {                                                                      \
         (void)root; (void)scheme; (void)subgroup; (void)setting;           \
         (void)value;                                                       \

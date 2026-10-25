@@ -18,10 +18,6 @@
 #include "../../common/shim.h"
 #include "../../common/warp.h"
 
-/* Exported through d3d12.def alone.  A dllexport would also export x86's decorated
- * name, which the linker then numbers into a free stock ordinal. */
-#define D3D12_API WINAPI
-
 typedef HRESULT (WINAPI *get_interface_fn)(const GUID *clsid, const GUID *iid,
                                            void **out);
 
@@ -35,8 +31,8 @@ DXCTS_REQUEST(warp_only, "DXCTS_WARP_ONLY")
 
 static HMODULE g_real_d3d12;
 
-HRESULT D3D12_API dxcts_d3d12_create_device(void *adapter, UINT min_feature_level,
-                                            const GUID *iid, void **device)
+HRESULT WINAPI dxcts_d3d12_create_device(void *adapter, UINT min_feature_level,
+                                         const GUID *iid, void **device)
 {
     static dxcts_d3d12_create_fn fn;
     static dxcts_backend_d3d12_create_fn backend;
@@ -69,12 +65,12 @@ HRESULT D3D12_API dxcts_d3d12_create_device(void *adapter, UINT min_feature_leve
  * image loading, and these are only reached with a PIX capture layer attached, which an
  * unattended conformance run never has. */
 
-void * D3D12_API D3D12PIXGetThreadInfo(void)
+void * WINAPI D3D12PIXGetThreadInfo(void)
 {
     return NULL;
 }
 
-UINT64 D3D12_API D3D12PIXEventsReplaceBlock(void *ctx, BOOL get_earliest)
+UINT64 WINAPI D3D12PIXEventsReplaceBlock(void *ctx, BOOL get_earliest)
 {
     (void)ctx; (void)get_earliest;
     return 0;
@@ -91,8 +87,8 @@ UINT64 D3D12_API D3D12PIXEventsReplaceBlock(void *ctx, BOOL get_earliest)
  * does, and the caller then handles the absence.  d3d12core is deliberately not loaded
  * to find out: loading Wine's would find the stub, and calling it is what raises.
  */
-HRESULT D3D12_API dxcts_d3d12_get_interface(const GUID *clsid, const GUID *iid,
-                                            void **out)
+HRESULT WINAPI dxcts_d3d12_get_interface(const GUID *clsid, const GUID *iid,
+                                         void **out)
 {
     static get_interface_fn fn;
     static int looked_up;

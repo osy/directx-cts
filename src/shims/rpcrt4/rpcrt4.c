@@ -13,15 +13,12 @@
 
 #include "../../common/shim.h"
 
-/* Not exported by name here: the .def maps the real names onto these. */
-#define RPC_API WINAPI
-
 #ifndef RPC_S_CANNOT_SUPPORT
 #define RPC_S_CANNOT_SUPPORT 1764L
 #endif
 
 /* Wine binds lazily on first call, so there is nothing to do here. */
-long RPC_API dxcts_RpcBindingBind(void *async, void *binding, void *iface)
+long WINAPI dxcts_RpcBindingBind(void *async, void *binding, void *iface)
 {
     (void)async; (void)binding; (void)iface;
     return RPC_S_OK;
@@ -63,8 +60,8 @@ static const WCHAR *protseq_name(unsigned long protseq)
     }
 }
 
-long RPC_API dxcts_RpcBindingCreateW(void *template_, void *security, void *options,
-                                     void **binding)
+long WINAPI dxcts_RpcBindingCreateW(void *template_, void *security, void *options,
+                                    void **binding)
 {
     binding_template_v1 *tmpl = template_;
     const WCHAR *protseq;
@@ -101,22 +98,22 @@ long RPC_API dxcts_RpcBindingCreateW(void *template_, void *security, void *opti
     return RPC_S_OK;
 }
 
-long RPC_API dxcts_RpcServerInqBindingHandle(void **binding)
+long WINAPI dxcts_RpcServerInqBindingHandle(void **binding)
 {
     if (binding)
         *binding = NULL;
     return RPC_S_CANNOT_SUPPORT;
 }
 
-long RPC_API dxcts_RpcServerSubscribeForNotification(void *iface, unsigned int notification,
-                                               unsigned int type, void *handle)
+long WINAPI dxcts_RpcServerSubscribeForNotification(void *iface, unsigned int notification,
+                                                    unsigned int type, void *handle)
 {
     (void)iface; (void)notification; (void)type; (void)handle;
     return RPC_S_CANNOT_SUPPORT;
 }
 
-long RPC_API dxcts_RpcServerUnsubscribeForNotification(void *iface, unsigned int notification,
-                                                 unsigned int *count)
+long WINAPI dxcts_RpcServerUnsubscribeForNotification(void *iface, unsigned int notification,
+                                                      unsigned int *count)
 {
     (void)iface; (void)notification;
     if (count)
@@ -124,7 +121,7 @@ long RPC_API dxcts_RpcServerUnsubscribeForNotification(void *iface, unsigned int
     return RPC_S_CANNOT_SUPPORT;
 }
 
-void RPC_API dxcts_Ndr64AsyncServerCallAll(void *request)
+void WINAPI dxcts_Ndr64AsyncServerCallAll(void *request)
 {
     (void)request;
 }

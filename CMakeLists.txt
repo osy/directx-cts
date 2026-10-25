@@ -35,7 +35,9 @@ endif()
 set(DXCTS_OUT ${CMAKE_BINARY_DIR}/bin)
 
 # Shim DLLs replace Microsoft-named modules, so the output name is fixed and the
-# import library is of no use to us.
+# import library is of no use to us.  The .def is a shim's whole export list:
+# __declspec(dllexport) would add x86's decorated names too, which the linker numbers
+# into free ordinals - and some importers ask for a stock ordinal.
 function(dxcts_shim name)
     cmake_parse_arguments(A "" "OUTPUT_NAME;DEF" "SOURCES;LIBS" ${ARGN})
     add_library(${name} SHARED ${A_SOURCES})

@@ -20,8 +20,6 @@
 #include "../../common/shim.h"
 #include "../../common/warp.h"
 
-#define KMT_API __declspec(dllexport) WINAPI
-
 DXCTS_KNOB(patch_adapter_name, "DXCTS_D3DKMT_ADAPTER_NAME_FALLBACK", 1, 0)
 DXCTS_KNOB(patch_adapter_info, "DXCTS_D3DKMT_ADAPTER_INFO_FALLBACK", 1, 0)
 DXCTS_REQUEST(warp_only, "DXCTS_WARP_ONLY")
@@ -39,14 +37,14 @@ static kmt_fn gdi32_proc(const char *name)
  * future Wine drops one of these. */
 #define KMT_UNAVAILABLE ((LONG)0xC000007AL)
 
-#define FORWARD(name)                                                  \
-    LONG KMT_API name(void *arg)                                       \
-    {                                                                  \
-        static kmt_fn fn;                                              \
-                                                                       \
-        if (!fn)                                                       \
-            fn = gdi32_proc(#name);                                    \
-        return fn ? fn(arg) : KMT_UNAVAILABLE;                         \
+#define FORWARD(name)                                                     \
+    LONG WINAPI name(void *arg)                                           \
+    {                                                                     \
+        static kmt_fn fn;                                                 \
+                                                                          \
+        if (!fn)                                                          \
+            fn = gdi32_proc(#name);                                       \
+        return fn ? fn(arg) : KMT_UNAVAILABLE;                            \
     }
 
 /*
@@ -54,16 +52,16 @@ static kmt_fn gdi32_proc(const char *name)
  * gdi32 under their own.  gdi32 is tried first so the platform's own implementation
  * wins wherever it exists.
  */
-#define FORWARD_OR_THUNK(name, thunk)                                  \
-    LONG KMT_API name(void *arg)                                       \
-    {                                                                  \
-        static kmt_fn fn;                                              \
-                                                                       \
-        if (!fn)                                                       \
-            fn = gdi32_proc(#name);                                    \
-        if (!fn)                                                       \
+#define FORWARD_OR_THUNK(name, thunk)                                     \
+    LONG WINAPI name(void *arg)                                           \
+    {                                                                     \
+        static kmt_fn fn;                                                 \
+                                                                          \
+        if (!fn)                                                          \
+            fn = gdi32_proc(#name);                                       \
+        if (!fn)                                                          \
             fn = (kmt_fn)dxcts_real_proc(&g_win32u, "win32u.dll", thunk); \
-        return fn ? fn(arg) : KMT_UNAVAILABLE;                         \
+        return fn ? fn(arg) : KMT_UNAVAILABLE;                            \
     }
 
 FORWARD_OR_THUNK(D3DKMTSubmitCommand, "NtGdiDdDDISubmitCommand")
@@ -168,7 +166,7 @@ static LONG open_primary_display(kmt_open_from_gdi_name *gdi)
  * (0)").  Falling back to the primary GDI display name yields the same adapter Wine
  * would have returned.
  */
-LONG KMT_API D3DKMTOpenAdapterFromDeviceName(void *arg)
+LONG WINAPI D3DKMTOpenAdapterFromDeviceName(void *arg)
 {
     static kmt_fn real;
     kmt_open_from_device_name *req = arg;
@@ -191,7 +189,7 @@ LONG KMT_API D3DKMTOpenAdapterFromDeviceName(void *arg)
  * test at Direct3D 9.0 - skipping each group that tests 9.1 (D3D9Ex) and running the
  * rest as 9.0 ("the maximum version for this OS/architecture is 9.0").
  */
-LONG KMT_API D3DKMTOpenAdapterFromHdc(void *arg)
+LONG WINAPI D3DKMTOpenAdapterFromHdc(void *arg)
 {
     static kmt_fn real;
     kmt_open_from_hdc *req = arg;
@@ -259,7 +257,7 @@ static UINT warp_driver_version(void)
  * answered here, but only where the real call declined: on Windows it succeeds and the
  * fallback never runs.
  */
-LONG KMT_API D3DKMTQueryAdapterInfo(void *arg)
+LONG WINAPI D3DKMTQueryAdapterInfo(void *arg)
 {
     static kmt_fn real;
     kmt_query_adapter_info *q = arg;
