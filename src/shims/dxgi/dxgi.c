@@ -294,12 +294,7 @@ static void *wrap_factory(void *factory, int inherited_index, int is_new)
 
     if (!w)
         return factory;
-#define INSTALL(vtbl, method, fn)                                             \
-    do {                                                                      \
-        int slot = SLOT(vtbl, method);                                         \
-        if (slot < w->base.slots)                                                   \
-            w->base.vtable[slot] = (void *)(fn);                               \
-    } while (0)
+#define INSTALL(vtbl, method, fn) DXCTS_INSTALL(&w->base, vtbl, method, fn)
     INSTALL(IDXGIFactoryVtbl,  EnumAdapters,  wrapper_enum_adapters);
     INSTALL(IDXGIFactory1Vtbl, EnumAdapters1, wrapper_enum_adapters1);
     /* IDXGIFactory6's enumeration is by index too, so under WARP-only it has to be
@@ -322,12 +317,7 @@ static void *wrap_adapter(void *adapter, int software)
 
     if (!w)
         return adapter;
-#define INSTALL(vtbl, method, fn)                                             \
-    do {                                                                      \
-        int slot = SLOT(vtbl, method);                                         \
-        if (slot < w->base.slots)                                                   \
-            w->base.vtable[slot] = (void *)(fn);                               \
-    } while (0)
+#define INSTALL(vtbl, method, fn) DXCTS_INSTALL(&w->base, vtbl, method, fn)
     /* Only describe it as software when that is what was asked for: an adapter wrapped
      * just to reach its outputs must still describe itself truthfully.  All three
      * GetDesc revisions are overridden, because the fixture may read any of them and
