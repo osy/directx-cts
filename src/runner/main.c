@@ -52,10 +52,10 @@
  */
 FILE *g_progress;
 
-static void usage(void)
+static void usage(FILE *to)
 {
     fputs(
-        "usage: dxcts <list|run|probe> [options]\n"
+        "usage: dxcts <list|run|probe|help> [options]\n"
         "\n"
         "  --catalog PATH     suite catalog (default: suites/graphics.jsonl beside dxcts)\n"
         "  --api NAME         only this API (d3d11, d3d12, dxgi, ...)\n"
@@ -104,7 +104,7 @@ static void usage(void)
         "                     what was left out and why\n"
         "  --no-patches       disable every shim workaround, to measure what one is\n"
         "                     worth; individual ones have their own DXCTS_* knobs\n",
-        stderr);
+        to);
 }
 
 static const char *arg_value(int argc, char **argv, int *i)
@@ -147,10 +147,16 @@ int main(int argc, char **argv)
 
     if (argc < 2)
     {
-        usage();
+        usage(stderr);
         return 2;
     }
     mode = argv[1];
+    /* "help" as well as --help: a Wine launcher may take --help for itself. */
+    if (!strcmp(mode, "help") || !strcmp(mode, "--help") || !strcmp(mode, "-h"))
+    {
+        usage(stdout);
+        return 0;
+    }
 
     memset(&o, 0, sizeof(o));
     o.timeout_s = DEFAULT_TIMEOUT_S;
@@ -194,7 +200,7 @@ int main(int argc, char **argv)
             o.exclusion = arg_value(argc, argv, &i);
         else if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h"))
         {
-            usage();
+            usage(stdout);
             return 0;
         }
         else
@@ -252,7 +258,7 @@ int main(int argc, char **argv)
 
     if (strcmp(mode, "run"))
     {
-        usage();
+        usage(stderr);
         return 2;
     }
 

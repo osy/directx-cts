@@ -77,13 +77,23 @@ case $here in
     rest=${here#*/drive_c/}
     win="C:\\$(printf %s "$rest" | tr / '\\')"
     : "${WINE:=/Applications/CrossOver.app/Contents/SharedSupport/CrossOver/bin/wine}"
-    exec "$WINE" --bottle "$bottle" --workdir "$win" --cx-app "$win\\dxcts.exe" "$@" 2>>"$DXCTS_HOST_LOG"
+    rc=0
+    "$WINE" --bottle "$bottle" --workdir "$win" --cx-app "$win\\dxcts.exe" "$@" 2>>"$DXCTS_HOST_LOG" || rc=$?
+    ;;
+*)
+    : "${WINE:=wine}"
+    cd "$here"
+    rc=0
+    "$WINE" "$here/dxcts.exe" "$@" 2>>"$DXCTS_HOST_LOG" || rc=$?
     ;;
 esac
 
-: "${WINE:=wine}"
-cd "$here"
-exec "$WINE" "$here/dxcts.exe" "$@" 2>>"$DXCTS_HOST_LOG"
+# The runner's own messages went to the host log with everything else on stderr; a
+# run that failed shows them.
+if [ "$rc" -ne 0 ]; then
+    grep '^dxcts: ' "$DXCTS_HOST_LOG" >&2 || true
+fi
+exit "$rc"
 """
 
 
