@@ -17,31 +17,35 @@
  * 262,144 and every later group lost its records. */
 #define MAX_CASES (1 << 22)
 
+static size_t name_hash(const char *name)
+{
+    size_t h = 5381;
+
+    while (*name)
+        h = h * 33 + (unsigned char)*name++;
+    return h;
+}
+
 /* Case names repeat (a WGF group logs every case under its own name), so each distinct
  * one is stored once for the life of the run. */
 static const char *intern(const char *name)
 {
     static char **table;
     static size_t capacity, used;
-    size_t h = 5381, i;
+    size_t h;
 
     if (used * 2 >= capacity)
     {
-        size_t want = capacity ? capacity * 2 : 4096, j;
+        size_t want = capacity ? capacity * 2 : 4096, j, k;
         char **grown = calloc(want, sizeof(*grown));
 
         if (!grown)
             return NULL;
         for (j = 0; j < capacity; j++)
         {
-            size_t k = 5381;
-            const char *t;
-
             if (!table[j])
                 continue;
-            for (t = table[j]; *t; t++)
-                k = k * 33 + (unsigned char)*t;
-            for (k &= want - 1; grown[k]; k = (k + 1) & (want - 1))
+            for (k = name_hash(table[j]) & (want - 1); grown[k]; k = (k + 1) & (want - 1))
                 ;
             grown[k] = table[j];
         }
@@ -49,9 +53,7 @@ static const char *intern(const char *name)
         table = grown;
         capacity = want;
     }
-    for (i = 0; name[i]; i++)
-        h = h * 33 + (unsigned char)name[i];
-    for (h &= capacity - 1; table[h]; h = (h + 1) & (capacity - 1))
+    for (h = name_hash(name) & (capacity - 1); table[h]; h = (h + 1) & (capacity - 1))
         if (!strcmp(table[h], name))
             return table[h];
     table[h] = _strdup(name);

@@ -90,16 +90,19 @@ void append(char *cmd, size_t cap, const char *fmt, ...)
     va_end(args);
 }
 
-/* Case numbers a resumed WGF group skips: everything up to and including the case the
- * previous process died in.  See spawn_group. */
-static char g_resume_skip[32];
-
-/* The case numbers a D3D9-era group process runs, or 0: see spawn_wgf9_group. */
-static long g_wgf9_first, g_wgf9_last;
+/* Which cases of a group one process runs, when not all of them. */
+typedef struct
+{
+    /* WGF: the case numbers a resumed group skips, everything up to and including the
+     * case the previous process died in ("1-N"); see spawn_group. */
+    char skip[32];
+    /* wgf9: the range of case numbers this process runs; see spawn_wgf9_group. */
+    long first, last;
+} case_range;
 
 static int build_command(char *cmd, size_t cap, const catalog_entry *e,
                          const options *o, const char *logdir, const char *tag,
-                         const char *group)
+                         const char *group, const case_range *range)
 {
     int ignored = 0;
     char neg[4096];
@@ -148,14 +151,14 @@ static int build_command(char *cmd, size_t cap, const catalog_entry *e,
         append(cmd, cap, "\"%s\"", e->binary);
         /* The modern generation selects a group by its path; the D3D9-era one by its
          * key, as a switch. */
-        if (group && g_wgf9_first)
-            append(cmd, cap, " -%s:%ld-%ld", group, g_wgf9_first, g_wgf9_last);
+        if (group && range && range->first)
+            append(cmd, cap, " -%s:%ld-%ld", group, range->first, range->last);
         else if (group)
             append(cmd, cap, strcmp(e->harness, "wgf") ? " -%s" : " \"%s\"", group);
         /* Exclusions are positionals too, after the selection they narrow. */
         ignored |= append_exclusions(cmd, cap, e, group, neg, sizeof(neg));
-        if (group && g_resume_skip[0])
-            append(cmd, cap, " \"!%s:%s\"", group, g_resume_skip);
+        if (group && range && range->skip[0])
+            append(cmd, cap, " \"!%s:%s\"", group, range->skip);
         /* The framework's option parser takes the rest of the token as the value and
          * does not strip quotes, so switch values are passed bare.  logdir is kept
          * relative and space-free for that reason. */
@@ -403,7 +406,8 @@ static int wgf9_log_path(const catalog_entry *e, char *out, size_t cap)
 }
 
 static int spawn_test(const catalog_entry *e, const options *o, const char *logdir,
-                      const char *tag, const char *group, run_record *out)
+                      const char *tag, const char *group, const case_range *range,
+                      run_record *out)
 {
     long long mark;
     char cmd[8192], events[MAX_PATH], child_out[MAX_PATH], child_err[MAX_PATH];
@@ -423,7 +427,7 @@ static int spawn_test(const catalog_entry *e, const options *o, const char *logd
     SetEnvironmentVariableA("DXCTS_EVENTS", events);
 
     out->selectors_ignored |= build_command(cmd, sizeof(cmd), e, o, logdir, tag,
-                                            group);
+                                            group, range);
     /* A cut-off command line would run with half its exclusions, or worse, a
      * truncated selector naming a broader group. */
     if (strlen(cmd) >= sizeof(cmd) - 1)
@@ -659,14 +663,15 @@ static long last_logged_case(const char *log)
 
 /* The first case the group enumerates after `after`, from its -GenerateCSV, or 0. */
 static long next_case(const catalog_entry *e, const options *o, const char *logdir,
-                      const char *tag, const char *group, long after)
+                      const char *tag, const char *group, const case_range *range,
+                      long after)
 {
     char cmd[8192], path[MAX_PATH], csv[MAX_PATH], dir[MAX_PATH], line[512];
     long found = 0;
     size_t i, n;
     FILE *fh;
 
-    build_command(cmd, sizeof(cmd), e, o, logdir, tag, group);
+    build_command(cmd, sizeof(cmd), e, o, logdir, tag, group, range);
     append(cmd, sizeof(cmd), " -GenerateCSV");
     if (!capture_listing(cmd, logdir, NULL, path, sizeof(path)))
         return 0;
@@ -724,13 +729,13 @@ static int spawn_group(const catalog_entry *e, const options *o, const char *log
                        const char *tag, const char *group, run_record *part)
 {
     char attempt_tag[300];
+    case_range range = { "", 0, 0 };
     long skipped_to = 0;
     int ok, resumes = 0;
 
     if (!strcmp(e->harness, "wgf9") && !o->sample)
         return spawn_wgf9_group(e, o, logdir, tag, group, part);
-    g_resume_skip[0] = 0;
-    ok = spawn_test(e, o, logdir, tag, group, part);
+    ok = spawn_test(e, o, logdir, tag, group, &range, part);
     snprintf(attempt_tag, sizeof(attempt_tag), "%s", tag);
     /* A sample is drawn afresh by every process, so resuming one would not run the
      * remainder of the same sample. */
@@ -744,17 +749,16 @@ static int spawn_group(const catalog_entry *e, const options *o, const char *log
         done = last_logged_case(log);
         if (done < skipped_to)
             done = skipped_to;
-        crashed = next_case(e, o, logdir, tag, group, done);
+        crashed = next_case(e, o, logdir, tag, group, &range, done);
         if (!crashed)
             break;              /* died after its last case: nothing left to run */
         note_crash(part, e, group, crashed, "resuming after it");
         skipped_to = crashed;
-        snprintf(g_resume_skip, sizeof(g_resume_skip), "1-%ld", crashed);
+        snprintf(range.skip, sizeof(range.skip), "1-%ld", crashed);
         snprintf(attempt_tag, sizeof(attempt_tag), "%s-r%d", tag, ++resumes);
         part->exit_code = 0;
-        ok = spawn_test(e, o, logdir, attempt_tag, group, part);
+        ok = spawn_test(e, o, logdir, attempt_tag, group, &range, part);
     }
-    g_resume_skip[0] = 0;
     return ok;
 }
 
@@ -853,6 +857,7 @@ static void drop_repeated_frame_cases(run_record *r, int from)
 static int spawn_wgf9_group(const catalog_entry *e, const options *o, const char *logdir,
                             const char *tag, const char *group, run_record *part)
 {
+    case_range range = { "", 0, 0 };
     long last_case = -1;
     int chunk, ok = 1;
 
@@ -862,15 +867,15 @@ static int spawn_wgf9_group(const catalog_entry *e, const options *o, const char
         long found, unfinished;
         int before = part->case_count, crashed, ran;
 
-        g_wgf9_first = (long)chunk * WGF9_CHUNK + 1;
-        g_wgf9_last = g_wgf9_first + WGF9_CHUNK - 1;
+        range.first = (long)chunk * WGF9_CHUNK + 1;
+        range.last = range.first + WGF9_CHUNK - 1;
         /* the first range keeps the group's own tag, which its reasons are read under */
         if (chunk)
             snprintf(attempt_tag, sizeof(attempt_tag), "%s-c%d", tag, chunk + 1);
         else
             snprintf(attempt_tag, sizeof(attempt_tag), "%s", tag);
         part->exit_code = 0;
-        if (!spawn_test(e, o, logdir, attempt_tag, group, part))
+        if (!spawn_test(e, o, logdir, attempt_tag, group, &range, part))
             ok = 0;
         ran = part->case_count != before;
         if (chunk)
@@ -887,10 +892,9 @@ static int spawn_wgf9_group(const catalog_entry *e, const options *o, const char
         /* the group's end is known and inside this range, or this range was the last
          * that could tell: a clean exit that never reached CleanupTest, or a death
          * before its first case */
-        if ((last_case >= 0 && g_wgf9_last >= last_case) || (!crashed && found < 0) || !ran)
+        if ((last_case >= 0 && range.last >= last_case) || (!crashed && found < 0) || !ran)
             break;
     }
-    g_wgf9_first = g_wgf9_last = 0;
     return ok;
 }
 
@@ -904,7 +908,7 @@ static int run_whole(const catalog_entry *e, const options *o, const char *logdi
     tag_of(e, NULL, tag, sizeof(tag));
     record_case_exclusions(out, e, group);
     ok = group ? spawn_group(e, o, logdir, tag, group, out)
-               : spawn_test(e, o, logdir, tag, NULL, out);
+               : spawn_test(e, o, logdir, tag, NULL, NULL, out);
     out->suspect_pass = tainted_passes(out);
     out->slow = o->slow_s && out->seconds > (double)o->slow_s;
     collect_binary_reasons(out, logdir, tag);
