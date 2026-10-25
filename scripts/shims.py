@@ -120,7 +120,9 @@ SHIMS: list[Shim] = [
          renames_original="dxctswtt.dll", every_target=True),
     Shim("dxrpc4.dll", "rpcrt4.dll",
          "TE.Common/TE.Model import Conduit.Broker statically, and it binds six RPC "
-         "entry points Wine lacks; stubbed because only remote execution calls them"),
+         "entry points Wine lacks; RpcBindingCreateW is rebuilt on the string-binding "
+         "API, since Conduit binds to its own broker at startup, and the server-side "
+         "ones refuse, since only remote execution calls them"),
 ]
 
 # Backend compatibility layers: one DLL per host D3D implementation, staged on every
