@@ -438,6 +438,26 @@ static map_entry *map_take(void *res, UINT sub)
  * a copy out of it into a default texture is served as an UpdateSubresource of those
  * bytes.
  */
+
+/* The two depth-stencil layouts D3DMetal uploads wrongly: bytes per texel and the
+ * offset of the stencil byte within one. */
+static int ds_layout(UINT format, UINT *texel, UINT *stencil_at)
+{
+    switch (format)
+    {
+    case DXGI_FORMAT_R32G8X24_TYPELESS:
+    case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
+        *texel = 8; *stencil_at = 4;
+        return 1;
+    case DXGI_FORMAT_R24G8_TYPELESS:
+    case DXGI_FORMAT_D24_UNORM_S8_UINT:
+        *texel = 4; *stencil_at = 3;
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 typedef struct
 {
     tex_shape shape;
@@ -450,7 +470,7 @@ static int ds_texture_of(ID3D11Resource *r, ds_texture *t)
     if (!tex_shape_of(r, &t->shape) || t->shape.dim == D3D11_RESOURCE_DIMENSION_TEXTURE3D
         || t->shape.samples > 1)
         return 0;
-    return dm_ds_layout(t->shape.format, &t->texel, &t->stencil_at);
+    return ds_layout(t->shape.format, &t->texel, &t->stencil_at);
 }
 
 static DXGI_FORMAT ds_view_format(DXGI_FORMAT f)
@@ -1461,7 +1481,6 @@ static int refuse_texture(UINT format, int depth_stencil, UINT samples, void **o
 {
     if (!dm_knob_texture_guard() || dm_format_texture_ok(format, depth_stencil, samples))
         return 0;
-    dm_count(&dm_counts.refused_creates);
     if (out)
         *out = NULL;
     return 1;
@@ -1569,7 +1588,7 @@ static HRESULT create_texture_common(dm_device *dw, create_texture_fn real,
     if (refuse_texture(s->format, s->bind & D3D11_BIND_DEPTH_STENCIL, s->samples, out))
         return E_INVALIDARG;
     if (dm_knob_depth_stencil_upload() && init && out && !s->is3d
-        && dm_ds_layout(s->format, &texel, &stencil_at) && s->samples <= 1
+        && ds_layout(s->format, &texel, &stencil_at) && s->samples <= 1
         && !(s->misc & (D3D11_RESOURCE_MISC_SHARED | D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX
                         | D3D11_RESOURCE_MISC_SHARED_NTHANDLE)))
         hr = create_ds_texture(dw, real, desc, init, out, s->usage == D3D11_USAGE_STAGING);
@@ -1672,7 +1691,6 @@ static int refuse_buffer_rtv(ID3D11Resource *res, void **out)
         || !buf)
         return 0;
     release(buf);
-    dm_count(&dm_counts.refused_creates);
     if (out)
         *out = NULL;
     return 1;

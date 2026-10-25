@@ -473,7 +473,6 @@ static int refuse_desc(const D3D12_RESOURCE_DESC *desc, void **out)
 {
     if (!unmakeable(desc))
         return 0;
-    dm_count(&dm_counts.refused_creates);
     if (out)
         *out = NULL;
     return 1;
@@ -591,7 +590,6 @@ static int alloc_info_refused(UINT n, const D3D12_RESOURCE_DESC *descs)
     for (i = 0; descs && i < n; i++)
         if (unmakeable(&descs[i]))
         {
-            dm_count(&dm_counts.refused_creates);
             return 1;
         }
     return 0;
@@ -638,7 +636,6 @@ static void WINAPI dev_create_rtv(void *self, ID3D12Resource *res,
         }
         if (buffer)
         {
-            dm_count(&dm_counts.refused_creates);
             return;
         }
     }
@@ -661,10 +658,7 @@ static HRESULT WINAPI dev_create_gfx_pso(void *self, const D3D12_GRAPHICS_PIPELI
             bad = !desc->StreamOutput.pSODeclaration[i].SemanticName;
         if (bad)
         {
-            dm_count(&dm_counts.refused_creates);
-            if (out)
-                *out = NULL;
-            return E_INVALIDARG;
+            return dm_refuse(out);
         }
     }
     /* A geometry shader under tessellation: D3DMetal cannot compile the geometry
@@ -674,10 +668,7 @@ static HRESULT WINAPI dev_create_gfx_pso(void *self, const D3D12_GRAPHICS_PIPELI
     if (dm_knob_draw_guards() && desc && desc->GS.BytecodeLength
         && (desc->HS.BytecodeLength || desc->DS.BytecodeLength))
     {
-        dm_count(&dm_counts.refused_creates);
-        if (out)
-            *out = NULL;
-        return E_INVALIDARG;
+        return dm_refuse(out);
     }
     return ((create_gfx_pso_fn)REAL_DEV(self, CreateGraphicsPipelineState))(dxcts_real(self),
                                                                             desc, iid, out);

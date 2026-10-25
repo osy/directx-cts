@@ -578,8 +578,6 @@ static void fetch_bounds_enter(dm_context *w, fetch_bounds *fb, int indexed,
         fb->temps[fb->n_temps++] = tmp;
         ID3D11DeviceContext_IASetVertexBuffers(ctx, slot, 1, &tmp, &v->stride, &v->offset);
     }
-    if (fb->n_temps)
-        dm_count(&dm_counts.padded_draws);
 }
 
 static void fetch_bounds_leave(dm_context *w, fetch_bounds *fb)

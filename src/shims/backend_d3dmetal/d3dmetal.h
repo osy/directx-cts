@@ -53,8 +53,6 @@ typedef struct
 {
     LONG dropped_draws;     /* draws not issued */
     LONG altered_draws;     /* draws issued with different state */
-    LONG refused_creates;   /* creates answered with a failure instead of forwarded */
-    LONG padded_draws;      /* draws issued on a zero-padded copy of a buffer */
 } dm_counters;
 
 extern dm_counters dm_counts;
@@ -62,6 +60,15 @@ extern dm_counters dm_counts;
 static inline void dm_count(LONG *counter)
 {
     InterlockedIncrement(counter);
+}
+
+/* A create refused before it reaches the host, the way a runtime refuses an invalid
+ * description. */
+static inline HRESULT dm_refuse(void **out)
+{
+    if (out)
+        *out = NULL;
+    return E_INVALIDARG;
 }
 
 /* --- Metal's capabilities per DXGI format (formats.c) --- */
@@ -88,9 +95,6 @@ UINT dm_format_impossible_support(UINT format);
 
 /* A stream-output declaration D3DMetal can hold: 53 entries, none of them a gap. */
 #define DM_MAX_STREAM_OUTPUT_ENTRIES 53
-
-/* Depth-stencil formats whose CPU uploads D3DMetal handles wrongly (d3d11.c). */
-int dm_ds_layout(UINT format, UINT *texel, UINT *stencil_at);
 
 /* --- entry points (d3d11.c, d3d12.c) --- */
 

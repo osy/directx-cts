@@ -23,7 +23,6 @@
 #include "../../common/shim.h"
 
 #define SLOT  DXCTS_SLOT
-#define WIDTH DXCTS_WIDTH
 
 DXCTS_KNOB(patch_device_probe,  "DXCTS_D3D11_DEVICE_PROBE_IFACE",  1, 0)
 DXCTS_KNOB(patch_verifier,      "DXCTS_D3D11_LOAD_VERIFIER",       1, 0)

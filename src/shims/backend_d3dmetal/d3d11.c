@@ -277,10 +277,7 @@ static HRESULT WINAPI dev_create_layout(void *self, const D3D11_INPUT_ELEMENT_DE
             bad = !elems[i].SemanticName;
         if (bad)
         {
-            dm_count(&dm_counts.refused_creates);
-            if (out)
-                *out = NULL;
-            return E_INVALIDARG;
+            return dm_refuse(out);
         }
     }
     hr = real(dxcts_real(self), elems, n, code, code_len, out);
@@ -310,10 +307,7 @@ static HRESULT WINAPI dev_create_gs_so(void *self, const void *code, SIZE_T code
             bad = !decl[i].SemanticName;
         if (bad)
         {
-            dm_count(&dm_counts.refused_creates);
-            if (out)
-                *out = NULL;
-            return E_INVALIDARG;
+            return dm_refuse(out);
         }
     }
     return real(dxcts_real(self), code, code_len, decl, n, strides, n_strides, rasterized,
@@ -360,10 +354,7 @@ static HRESULT WINAPI dev_create_ps(void *self, const void *code, SIZE_T code_le
 
     if (dm_knob_minprec_position() && ps_minprec_on_position(code, code_len))
     {
-        dm_count(&dm_counts.refused_creates);
-        if (out)
-            *out = NULL;
-        return E_INVALIDARG;
+        return dm_refuse(out);
     }
     return real(dxcts_real(self), code, code_len, linkage, out);
 }

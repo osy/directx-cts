@@ -289,22 +289,3 @@ UINT dm_format_impossible_support(UINT format)
               | D3D11_FORMAT_SUPPORT_MIP_AUTOGEN;
     return mask;
 }
-
-/* The two depth-stencil layouts D3DMetal uploads wrongly: bytes per texel and the
- * offset of the stencil byte within one. */
-int dm_ds_layout(UINT format, UINT *texel, UINT *stencil_at)
-{
-    switch (format)
-    {
-    case DXGI_FORMAT_R32G8X24_TYPELESS:
-    case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
-        *texel = 8; *stencil_at = 4;
-        return 1;
-    case DXGI_FORMAT_R24G8_TYPELESS:
-    case DXGI_FORMAT_D24_UNORM_S8_UINT:
-        *texel = 4; *stencil_at = 3;
-        return 1;
-    default:
-        return 0;
-    }
-}
