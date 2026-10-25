@@ -20,15 +20,15 @@
 {"binary":"ColorKey.exe","harness":"wgf9","api":"d3d9"}
 {"binary":"Compress.exe","harness":"wgf9","api":"d3d9"}
 {"binary":"Cubemap.exe","harness":"wgf9","api":"d3d9"}
-{"binary":"D3DConf_11_Core.dll","harness":"taef","api":"d3d11","methods":39}
-{"binary":"D3DConf_12_Core.dll","harness":"taef","api":"d3d12","methods":465,"software_adapter":true,"timeout_s":1800}
-{"binary":"D3DConf_12_Video.dll","harness":"taef","api":"d3d12","methods":127,"software_adapter":true}
-{"binary":"D3DConf_9_Core.dll","harness":"taef","api":"d3d9","methods":2}
+{"binary":"D3DConf_11_Core.dll","harness":"taef","api":"d3d11"}
+{"binary":"D3DConf_12_Core.dll","harness":"taef","api":"d3d12","software_adapter":true,"timeout_s":1800}
+{"binary":"D3DConf_12_Video.dll","harness":"taef","api":"d3d12","software_adapter":true}
+{"binary":"D3DConf_9_Core.dll","harness":"taef","api":"d3d9"}
 {"binary":"D3DCrossProcShare.exe","harness":"wgf9","api":"d3d9"}
 {"binary":"D3DProtection.exe","harness":"wgf9","api":"d3d11"}
 {"binary":"D3DSystemCheck.exe","harness":"wgf","api":"d3d11"}
-{"binary":"DXGIConf_HybridCrossAdapterScanOut.dll","harness":"taef","api":"dxgi","methods":1,"skip":"requires a second adapter"}
-{"binary":"DXGIConf_HybridDList.dll","harness":"taef","api":"dxgi","methods":2,"skip":"requires a second adapter"}
+{"binary":"DXGIConf_HybridCrossAdapterScanOut.dll","harness":"taef","api":"dxgi","skip":"requires a second adapter"}
+{"binary":"DXGIConf_HybridDList.dll","harness":"taef","api":"dxgi","skip":"requires a second adapter"}
 {"binary":"DXGIGammaVM.exe","harness":"wgf","api":"dxgi","skip":"requires a frame capture device"}
 {"binary":"DXGIHybridPresent.exe","harness":"wgf","api":"dxgi","skip":"requires a second adapter"}
 {"binary":"DXGIModeEnumeration.exe","harness":"wgf","api":"dxgi"}
@@ -38,8 +38,8 @@
 {"binary":"DXGIStereoPresent.exe","harness":"wgf","api":"dxgi"}
 {"binary":"DXGISwap.exe","harness":"wgf","api":"dxgi"}
 {"binary":"DXGITrimMemory.exe","harness":"wgf","api":"dxgi"}
-{"binary":"DirectML.Test.ModelTests.dll","harness":"taef","api":"directml","methods":1,"deploy_from":"MetacommandHlkTestData\\directml_model_tests","deploy_to":"%TEMP%\\directml.test.modeltests.0.0.4"}
-{"binary":"DirectML.Test.NpuMetacommandHlkTests.dll","harness":"taef","api":"directml","methods":169}
+{"binary":"DirectML.Test.ModelTests.dll","harness":"taef","api":"directml","deploy_from":"MetacommandHlkTestData\\directml_model_tests","deploy_to":"%TEMP%\\directml.test.modeltests.0.0.4"}
+{"binary":"DirectML.Test.NpuMetacommandHlkTests.dll","harness":"taef","api":"directml"}
 {"binary":"DirtyStateTestHelper.dll","harness":"taef","api":"d3d9","skip":"helper library"}
 {"binary":"DisplacementMapping.exe","harness":"wgf9","api":"d3d9"}
 {"binary":"DynamicResources.exe","harness":"wgf9","api":"d3d9"}
@@ -57,12 +57,12 @@
 {"binary":"LostDev.exe","harness":"wgf9","api":"d3d9"}
 {"binary":"MRT.exe","harness":"wgf9","api":"d3d9"}
 {"binary":"MVertex.exe","harness":"wgf9","api":"d3d9"}
-{"binary":"MapDefaultTexture.dll","harness":"taef","api":"d3d11","methods":4}
+{"binary":"MapDefaultTexture.dll","harness":"taef","api":"d3d11"}
 {"binary":"Mapping.exe","harness":"wgf9","api":"d3d9"}
 {"binary":"MemChecker.exe","harness":"wgf9","api":"d3d9"}
-{"binary":"MetacommandHlkTests.dll","harness":"taef","api":"d3d12","methods":48}
-{"binary":"Microsoft.DXGI.PresentDuration.Tests.dll","harness":"taef","api":"dxgi","methods":4}
-{"binary":"Microsoft.DXGI.SwapChain.Rendering.Tests.dll","harness":"taef","api":"dxgi","methods":8}
+{"binary":"MetacommandHlkTests.dll","harness":"taef","api":"d3d12"}
+{"binary":"Microsoft.DXGI.PresentDuration.Tests.dll","harness":"taef","api":"dxgi"}
+{"binary":"Microsoft.DXGI.SwapChain.Rendering.Tests.dll","harness":"taef","api":"dxgi"}
 {"binary":"MipFilter.exe","harness":"wgf9","api":"d3d9"}
 {"binary":"MipGen.exe","harness":"wgf9","api":"d3d9"}
 {"binary":"MultiHead.exe","harness":"wgf9","api":"d3d9"}
@@ -130,9 +130,9 @@
 {"binary":"alphaprecision.exe","harness":"wgf9","api":"d3d9"}
 {"binary":"bump.exe","harness":"wgf9","api":"d3d9"}
 {"binary":"clear.exe","harness":"wgf9","api":"d3d9"}
-{"binary":"dstoragetest.dll","harness":"taef","api":"d3d12","methods":19}
-{"binary":"dxgiconf_core.dll","harness":"taef","api":"dxgi","methods":1}
-{"binary":"iFlip.dll","harness":"taef","api":"dxgi","methods":4,"dwm_output":true}
+{"binary":"dstoragetest.dll","harness":"taef","api":"d3d12"}
+{"binary":"dxgiconf_core.dll","harness":"taef","api":"dxgi"}
+{"binary":"iFlip.dll","harness":"taef","api":"dxgi","dwm_output":true}
 {"binary":"lightmap.exe","harness":"wgf9","api":"d3d9"}
 {"binary":"multi_swapchain.exe","harness":"wgf9","api":"d3d9"}
 {"binary":"reschk.exe","harness":"wgf9","api":"d3d9"}

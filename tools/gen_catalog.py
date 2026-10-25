@@ -84,8 +84,8 @@ API_PREFIX = [
 ]
 
 
-def classify(path: Path) -> tuple[str, int] | None:
-    """(harness, taef method count) or None when the file is not a test."""
+def classify(path: Path) -> str | None:
+    """The harness family, or None when the file is not a test."""
     try:
         img = pemod.PEFile(path)
     except (pemod.NotPE, OSError):
@@ -93,20 +93,19 @@ def classify(path: Path) -> tuple[str, int] | None:
     blob = path.read_bytes()
 
     if b"gtest_list_tests" in blob:
-        return "gtest", 0
+        return "gtest"
 
-    methods = blob.count(b"_TAEF_PinTestMethodInfo")
     imports = {i.dll.lower() for i in img.all_imports()}
-    if methods or "te.common.dll" in imports:
-        return "taef", methods
+    if b"_TAEF_PinTestMethodInfo" in blob or "te.common.dll" in imports:
+        return "taef"
 
     if "wttlog.dll" not in imports and b"WTTLog.dll" not in blob:
         return None
     # The modern generation spells its options in mixed case and offers -GenerateCSV;
     # the D3D9-era one uses uppercase and numeric case ranges.
     if b"GenerateCSV" in blob and b"AdapterType" in blob:
-        return "wgf", 0
-    return "wgf9", 0
+        return "wgf"
+    return "wgf9"
 
 
 def api_of(name: str) -> str:
@@ -134,17 +133,14 @@ def main() -> int:
         for path in sorted(root.iterdir()):
             if path.suffix.lower() not in (".exe", ".dll"):
                 continue
-            kind = classify(path)
-            if kind is None:
+            harness = classify(path)
+            if harness is None:
                 continue
-            harness, methods = kind
             entry = {
                 "binary": path.name,
                 "harness": harness,
                 "api": api_of(path.name),
             }
-            if methods:
-                entry["methods"] = methods
             if path.name in EXCLUDE:
                 entry["skip"] = EXCLUDE[path.name]
             elif path.name in MULTI_ADAPTER:
