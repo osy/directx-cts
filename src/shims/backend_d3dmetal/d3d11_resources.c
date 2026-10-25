@@ -362,11 +362,14 @@ static void *wrap_texture(void *tex, DXGI_FORMAT orig)
 
     ID3D11Resource_GetType((ID3D11Resource *)tex, &dim);
     if (dim == D3D11_RESOURCE_DIMENSION_TEXTURE1D)
-        slots = dxcts_widest_slots(tex, k_textures1d, DXCTS_COUNT(k_textures1d), &probed_1d);
+        slots = dxcts_widest_slots(tex, k_textures1d, DXCTS_COUNT(k_textures1d),
+                                   &probed_1d);
     else if (dim == D3D11_RESOURCE_DIMENSION_TEXTURE3D)
-        slots = dxcts_widest_slots(tex, k_textures3d, DXCTS_COUNT(k_textures3d), &probed_3d);
+        slots = dxcts_widest_slots(tex, k_textures3d, DXCTS_COUNT(k_textures3d),
+                                   &probed_3d);
     else
-        slots = dxcts_widest_slots(tex, k_textures2d, DXCTS_COUNT(k_textures2d), &probed_2d);
+        slots = dxcts_widest_slots(tex, k_textures2d, DXCTS_COUNT(k_textures2d),
+                                   &probed_2d);
     w = (tex_wrapper *)dxcts_wrap(tex, slots, sizeof(*w));
     if (!w)
         return tex;
@@ -573,7 +576,8 @@ static int stencil_pipe(dm_device *dw)
         hr = ID3D11Device_CreateRasterizerState(dev, &rsd, &dw->st_rs);
     if (FAILED(hr) || !dw->st_vs || !dw->st_il || !dw->st_dss || !dw->st_rs)
     {
-        dxcts_release(dw->st_vs); dxcts_release(dw->st_il); dxcts_release(dw->st_dss); dxcts_release(dw->st_rs);
+        dxcts_release(dw->st_vs); dxcts_release(dw->st_il); dxcts_release(dw->st_dss);
+        dxcts_release(dw->st_rs);
         dw->st_vs = NULL; dw->st_il = NULL; dw->st_dss = NULL; dw->st_rs = NULL;
         return 0;
     }
@@ -641,7 +645,8 @@ static void restore_state(ID3D11DeviceContext *c, saved_state *s)
     ID3D11DeviceContext_OMSetDepthStencilState(c, s->dss, s->stencil_ref);
     ID3D11DeviceContext_OMSetBlendState(c, s->bs, s->factor, s->sample_mask);
     ID3D11DeviceContext_SOSetTargets(c, D3D11_SO_BUFFER_SLOT_COUNT, s->so, so_off);
-    dxcts_release(s->vs); dxcts_release(s->ps); dxcts_release(s->gs); dxcts_release(s->hs); dxcts_release(s->ds);
+    dxcts_release(s->vs); dxcts_release(s->ps); dxcts_release(s->gs);
+    dxcts_release(s->hs); dxcts_release(s->ds);
     dxcts_release(s->il); dxcts_release(s->vb); dxcts_release(s->rs);
     for (i = 0; i < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; i++)
         dxcts_release(s->rtv[i]);

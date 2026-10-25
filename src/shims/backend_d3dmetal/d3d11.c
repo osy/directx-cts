@@ -166,7 +166,8 @@ static void *wrap_context(dm_device *device, void *ctx)
     if (i == MAX_CONTEXTS)
     {
         unlock();
-        dxcts_addref(ctx);   /* the wrapper took over the caller's reference; take it back */
+        /* the wrapper took over the caller's reference; take it back */
+        dxcts_addref(ctx);
         dxcts_wrapper_release(device);
         dxcts_wrapper_release(w);
         return ctx;
@@ -529,7 +530,8 @@ static HRESULT WINAPI dxgi_enqueue_set_event(void *self, HANDLE event)
     {
         ID3D11Device_GetImmediateContext(dev, &ctx);
         if (ctx)
-            ID3D11DeviceContext_QueryInterface(ctx, &IID_ID3D11DeviceContext4, (void **)&ctx4);
+            ID3D11DeviceContext_QueryInterface(ctx, &IID_ID3D11DeviceContext4,
+                                               (void **)&ctx4);
         if (ctx4)
             hr = ID3D11Device5_CreateFence(dev5, 0, D3D11_FENCE_FLAG_NONE, &IID_ID3D11Fence,
                                            (void **)&fence);
@@ -543,7 +545,8 @@ static HRESULT WINAPI dxgi_enqueue_set_event(void *self, HANDLE event)
         else if (SUCCEEDED(hr))
             hr = E_NOTIMPL;
     }
-    dxcts_release(fence); dxcts_release(ctx4); dxcts_release(ctx); dxcts_release(dev5); dxcts_release(dev);
+    dxcts_release(fence); dxcts_release(ctx4); dxcts_release(ctx); dxcts_release(dev5);
+    dxcts_release(dev);
     return hr;
 }
 
@@ -579,7 +582,8 @@ static HRESULT WINAPI dev_qi(void *self, const GUID *iid, void **out)
 
     if (!iid || !out)
         return E_POINTER;
-    if (dxcts_wrapper_answers(w, iid, dxcts_d3d11_devices, DXCTS_COUNT(dxcts_d3d11_devices)))
+    if (dxcts_wrapper_answers(w, iid, dxcts_d3d11_devices,
+                              DXCTS_COUNT(dxcts_d3d11_devices)))
     {
         dxcts_wrapper_addref(w);
         *out = self;
@@ -667,7 +671,8 @@ static ULONG WINAPI dev_release(void *self)
         if (i < MAX_PARKED)
             return 0;
     }
-    dxcts_release(w->st_vs); dxcts_release(w->st_il); dxcts_release(w->st_dss); dxcts_release(w->st_rs);
+    dxcts_release(w->st_vs); dxcts_release(w->st_il); dxcts_release(w->st_dss);
+    dxcts_release(w->st_rs);
     dxcts_release(w->base.real);
     dxcts_wrapper_free(&w->base);
     return 0;
@@ -693,9 +698,10 @@ static dm_device *take_parked(const dev_key *key)
 static void *wrap_device(void *device, const dev_key *key, int reusable, UINT level)
 {
     static int probed_slots;
-    dm_device *w = (dm_device *)dxcts_wrap(device, dxcts_widest_slots(device, dxcts_d3d11_devices,
-                                                                        DXCTS_COUNT(dxcts_d3d11_devices),
-                                                                        &probed_slots),
+    dm_device *w = (dm_device *)dxcts_wrap(device,
+                                           dxcts_widest_slots(device, dxcts_d3d11_devices,
+                                                              DXCTS_COUNT(dxcts_d3d11_devices),
+                                                              &probed_slots),
                                            sizeof(*w));
 
     if (!w)

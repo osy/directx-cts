@@ -351,7 +351,8 @@ static int patch_queue(void *object)
     DWORD old;
     int patched;
 
-    if (FAILED(((dxcts_qi_fn)(*(void ***)object)[0])(object, &IID_ID3D12CommandQueue, &queue)))
+    if (FAILED(((dxcts_qi_fn)(*(void ***)object)[0])(object, &IID_ID3D12CommandQueue,
+                                                     &queue)))
         return 0;
     vtable = *(void ***)queue;
     slot = &vtable[SLOT(ID3D12CommandQueueVtbl, ExecuteCommandLists)];

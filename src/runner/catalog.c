@@ -89,12 +89,12 @@ const char *base_name(const char *path)
  *   {"binary":"WGF11Foo.exe","group":"Foo\\Bar","cases":"12-15,40","reason":"..."}
  *
  * binary may be replaced or narrowed by harness, naming a whole framework family that
- * cannot run on the implementation.  group absent excludes the whole binary; cases absent, the whole group.  binary and
- * group take * and ? wildcards, and a WGF group also covers everything under it, as
- * the framework's own "!Group" does.  cases is the WGF case numbers the framework
- * prints, or for TAEF and gtest the method or test names within the group, comma
- * separated.  Every line must say why: a line without a reason is refused, so the list
- * cannot grow entries nobody can justify removing.
+ * cannot run on the implementation.  group absent excludes the whole binary; cases
+ * absent, the whole group.  binary and group take * and ? wildcards, and a WGF group
+ * also covers everything under it, as the framework's own "!Group" does.  cases is the
+ * WGF case numbers the framework prints, or for TAEF and gtest the method or test names
+ * within the group, comma separated.  Every line must say why: a line without a reason
+ * is refused, so the list cannot grow entries nobody can justify removing.
  *
  * Fixing the harness is preferred to adding a line here; a line is what is left when
  * the fault is the implementation's and cannot be survived.

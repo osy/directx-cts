@@ -199,6 +199,10 @@ static wrapper *wrap_bare(void *object, object_kind kind)
     return w;
 }
 
+/* DXGI stops enumerating long before this; it exists so a factory that never reports
+ * DXGI_ERROR_NOT_FOUND cannot spin here. */
+#define MAX_ADAPTERS 64
+
 /*
  * Which adapter to describe as software: the first one, unless the host already
  * enumerates one of its own, in which case enumeration is left alone.
@@ -216,10 +220,6 @@ static wrapper *wrap_bare(void *object, object_kind kind)
  * and no second device, and a device created on it is the same device as on the
  * hardware adapter, so a test that renders through it is still exercised.
  */
-/* DXGI stops enumerating long before this; it exists so a factory that never reports
- * DXGI_ERROR_NOT_FOUND cannot spin here. */
-#define MAX_ADAPTERS 64
-
 static int find_software_slot(void *factory, int slots)
 {
     void **vtable = *(void ***)factory;

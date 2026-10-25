@@ -159,12 +159,12 @@ static int build_command(char *cmd, size_t cap, const catalog_entry *e,
         ignored |= append_exclusions(cmd, cap, e, group, neg, sizeof(neg));
         if (group && range && range->skip[0])
             append(cmd, cap, " \"!%s:%s\"", group, range->skip);
-        /* The framework's option parser takes the rest of the token as the value and
-         * does not strip quotes, so switch values are passed bare.  logdir is kept
-         * relative and space-free for that reason. */
-        /* The framework logs only failures and skips unless asked for everything,
-         * so without -LogAll a passing case produces no log record, no WTTLog call
-         * and no event: passes are invisible and the counts are failures only. */
+        /* The framework's option parser takes the rest of the token as the value and does
+         * not strip quotes, so switch values are passed bare.  logdir is kept relative and
+         * space-free for that reason.  The framework logs only failures and skips unless
+         * asked for everything, so without -LogAll a passing case produces no log record,
+         * no WTTLog call and no event: passes are invisible and the counts are failures
+         * only. */
         append(cmd, cap, " -TextLog -LogAll -LogClean -LogPath:%s -LogFileName:%s",
                logdir, tag);
         append(cmd, cap, " -AdapterType:%s",
