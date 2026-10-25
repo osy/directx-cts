@@ -243,9 +243,9 @@ what it saw, so a run made some other way still explains itself.
     dxcts run   --api d3d11 --per-group --timeout 60 --out report.json
 
 Selection is by API, harness family, binary and group, plus deterministic sampling
-(`--sample 0.002 --seed 1`). Sampling and group selection are spellings the WGF
-framework has and TAEF and gtest do not, so a binary that could not be given one is
-recorded with `selectors_ignored` rather than counted as if it had been.
+(`--sample 0.002 --seed 1`). Sampling is a spelling the WGF framework has and TAEF and
+gtest do not, so a binary that could not be given one is recorded with
+`selectors_ignored` rather than counted as if it had been.
 
 Progress goes to stdout, and so does the report when there is no `--out`, so in that
 case progress is suppressed and the report is the only thing written there. `--slow
