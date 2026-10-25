@@ -145,35 +145,35 @@ static void ctx_refresh_state(dm_context *w)
 
     ctx_forget_state(w);
     ID3D11DeviceContext_GSGetShader(c, (ID3D11GeometryShader **)&shader, NULL, NULL);
-    w->gs_bound = shader != NULL; release(shader); shader = NULL;
+    w->gs_bound = shader != NULL; dxcts_release(shader); shader = NULL;
     ID3D11DeviceContext_HSGetShader(c, (ID3D11HullShader **)&shader, NULL, NULL);
-    w->hs_bound = shader != NULL; release(shader); shader = NULL;
+    w->hs_bound = shader != NULL; dxcts_release(shader); shader = NULL;
     ID3D11DeviceContext_DSGetShader(c, (ID3D11DomainShader **)&shader, NULL, NULL);
-    w->ds_bound = shader != NULL; release(shader); shader = NULL;
+    w->ds_bound = shader != NULL; dxcts_release(shader); shader = NULL;
     ID3D11DeviceContext_VSGetShader(c, (ID3D11VertexShader **)&shader, NULL, NULL);
-    w->vs = shader; release(shader);
+    w->vs = shader; dxcts_release(shader);
     ID3D11DeviceContext_IAGetInputLayout(c, &il);
     ctx_note_layout(w, il);
-    release(il);
+    dxcts_release(il);
     ID3D11DeviceContext_IAGetVertexBuffers(c, 0, D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT,
                                            bufs, strides, offsets);
     ctx_note_vbs(w, 0, D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT, bufs, strides, offsets);
     for (i = 0; i < D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT; i++)
-        release(bufs[i]);
+        dxcts_release(bufs[i]);
     ID3D11DeviceContext_IAGetIndexBuffer(c, &ib, &ib_format, &ib_offset);
     ctx_note_ib(w, ib, ib_format, ib_offset);
-    release(ib);
+    dxcts_release(ib);
     ID3D11DeviceContext_IAGetPrimitiveTopology(c, &topo);
     ctx_note_topology(w, topo);
     ID3D11DeviceContext_OMGetBlendState(c, &bs, factor, &mask);
     ctx_note_blend(w, bs, factor, mask);
-    release(bs);
+    dxcts_release(bs);
     ID3D11DeviceContext_OMGetRenderTargets(c, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, rtvs,
                                            &dsv);
     ctx_note_targets(w, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, rtvs);
     for (i = 0; i < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; i++)
-        release(rtvs[i]);
-    release(dsv);
+        dxcts_release(rtvs[i]);
+    dxcts_release(dsv);
 }
 
 /* The alpha-to-coverage-free twin of `bs`, or NULL when `bs` does not enable
@@ -195,7 +195,7 @@ static ID3D11BlendState *blend_without_a2c(ID3D11Device *dev, ID3D11BlendState *
         return NULL;
     if (SUCCEEDED(ID3D11BlendState_SetPrivateDataInterface(bs, &k_blend_no_a2c_tag,
                                                            (IUnknown *)twin)))
-        release(twin); /* the state's slot holds the surviving reference */
+        dxcts_release(twin); /* the state's slot holds the surviving reference */
     ID3D11BlendState_SetPrivateData(bs, &k_blend_no_a2c_ptr_tag, sizeof(twin), &twin);
     return twin;
 }
@@ -245,7 +245,7 @@ static ID3D11BlendState *blend_with_alpha_masked(ID3D11Device *dev, ID3D11BlendS
         for (i = 0; i < cache.n; i++)
             if (cache.key[i] == key)
             {
-                addref(cache.twin[i]);
+                dxcts_addref(cache.twin[i]);
                 return cache.twin[i];
             }
     memset(&d, 0, sizeof(d));
@@ -294,7 +294,7 @@ static ID3D11BlendState *blend_with_alpha_masked(ID3D11Device *dev, ID3D11BlendS
         cache.key[cache.n] = key;
         cache.twin[cache.n] = twin;
         cache.n++;
-        addref(twin);   /* the cache's reference; the caller keeps the other */
+        dxcts_addref(twin);   /* the cache's reference; the caller keeps the other */
         if (holder)
             ID3D11DeviceChild_SetPrivateData(holder, &k_mask_twins_tag, sizeof(cache), &cache);
         else
@@ -349,7 +349,7 @@ static void draw_guard_enter(dm_context *w, draw_guard *g)
 
         if (!w->mask_twin || w->mask_twin_for != w->blend || w->mask_twin_key != key)
         {
-            release(w->mask_twin);
+            dxcts_release(w->mask_twin);
             w->mask_twin = blend_with_alpha_masked(dev, w->blend, w->rgb32_slots, drop_a2c);
             w->mask_twin_for = w->blend;
             w->mask_twin_key = key;
@@ -439,7 +439,7 @@ static ID3D11Buffer *device_zero_buffer(ID3D11Device *dev)
     if (!zb)
         return NULL;
     if (SUCCEEDED(ID3D11Device_SetPrivateDataInterface(dev, &k_zero_buffer_tag, (IUnknown *)zb)))
-        release(zb); /* the device's slot holds the surviving reference */
+        dxcts_release(zb); /* the device's slot holds the surviving reference */
     return zb;
 }
 
@@ -458,7 +458,7 @@ static ID3D11Buffer *zero_padded_copy(ID3D11Device *dev, ID3D11DeviceContext *ct
     d.BindFlags = bind;
     if (!zb || FAILED(ID3D11Device_CreateBuffer(dev, &d, NULL, &tmp)) || !tmp)
     {
-        release(tmp);
+        dxcts_release(tmp);
         return NULL;
     }
     if (bytes > keep)
@@ -591,7 +591,7 @@ static void fetch_bounds_leave(dm_context *w, fetch_bounds *fb)
     if (fb->ib_swapped)
         ID3D11DeviceContext_IASetIndexBuffer(ctx, fb->ib, fb->ib_format, fb->ib_offset);
     for (i = 0; i < fb->n_temps; i++)
-        release(fb->temps[i]);
+        dxcts_release(fb->temps[i]);
 }
 
 /* 1 when some element the draw fetches lies outside its buffer from the very first
@@ -647,7 +647,7 @@ static int read_indirect_args(dm_context *w, ID3D11Buffer *args, UINT offset, UI
         ID3D11DeviceContext_Unmap(ctx, (ID3D11Resource *)stg, 0);
         ok = 1;
     }
-    release(stg);
+    dxcts_release(stg);
     return ok;
 }
 

@@ -207,7 +207,7 @@ static void *wrap_context(void *device, void *ctx)
             ctx_unlock();
             /* The wrapper already holds the one reference it needs on the real
              * context, so the reference the caller was just given is surplus. */
-            ((dxcts_ref_fn)(*(void ***)ctx)[2])(ctx);
+            dxcts_release(ctx);
             return w;
         }
 
@@ -237,7 +237,7 @@ static void *wrap_context(void *device, void *ctx)
          * The wrapper took over the caller's reference, so one is taken back before
          * discarding it. */
         ctx_unlock();
-        ((dxcts_ref_fn)(*(void ***)ctx)[1])(ctx);      /* slot 1 is AddRef */
+        dxcts_addref(ctx);
         dxcts_wrapper_release(w);
         return ctx;
     }

@@ -56,12 +56,6 @@ typedef void (WINAPI *resolve_region_fn)(void *, ID3D12Resource *, UINT, UINT, U
 #define REAL_CL(self, method) \
     dxcts_real_vtable(self)[SLOT(ID3D12GraphicsCommandListVtbl, method)]
 
-static void release(void *obj)
-{
-    if (obj)
-        ((dxcts_ref_fn)(*(void ***)obj)[2])(obj);
-}
-
 /* COM methods return a struct through a hidden pointer passed after `this`, on every
  * architecture - the RetVal parameter d3d12.h's C interface spells out.  On arm64 this
  * is not the C convention for a function returning the struct by value (x8, or x0:x1
@@ -378,7 +372,7 @@ static int patch_queue(void *object)
         patched = 1;
     }
     ReleaseSRWLockExclusive(&queue_lock);
-    release(queue);
+    dxcts_release(queue);
     return patched;
 }
 
@@ -801,7 +795,7 @@ static HRESULT WINAPI dev_qi(void *self, const GUID *iid, void **out)
      * comes back as the device itself is one this wrapper covers. */
     if (SUCCEEDED(hr) && *out == w->real)
     {
-        release(*out);
+        dxcts_release(*out);
         dxcts_wrapper_addref(w);
         *out = w;
     }

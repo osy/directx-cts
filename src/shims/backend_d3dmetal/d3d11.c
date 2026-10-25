@@ -77,7 +77,7 @@ static ULONG WINAPI ctx_release(void *self)
     unlock();
     if (refs == 0)
     {
-        release(twin);
+        dxcts_release(twin);
         dxcts_wrapper_release(device);
     }
     return refs;
@@ -99,7 +99,7 @@ static void *wrap_context(dm_device *device, void *ctx)
             unlock();
             /* The wrapper already holds the one reference it needs on the real
              * context, so the reference the caller was just given is surplus. */
-            release(ctx);
+            dxcts_release(ctx);
             return w;
         }
     slots = dxcts_widest_slots(ctx, dxcts_d3d11_contexts, DXCTS_COUNT(dxcts_d3d11_contexts),
@@ -166,7 +166,7 @@ static void *wrap_context(dm_device *device, void *ctx)
     if (i == MAX_CONTEXTS)
     {
         unlock();
-        addref(ctx);   /* the wrapper took over the caller's reference; take it back */
+        dxcts_addref(ctx);   /* the wrapper took over the caller's reference; take it back */
         dxcts_wrapper_release(device);
         dxcts_wrapper_release(w);
         return ctx;
@@ -543,7 +543,7 @@ static HRESULT WINAPI dxgi_enqueue_set_event(void *self, HANDLE event)
         else if (SUCCEEDED(hr))
             hr = E_NOTIMPL;
     }
-    release(fence); release(ctx4); release(ctx); release(dev5); release(dev);
+    dxcts_release(fence); dxcts_release(ctx4); dxcts_release(ctx); dxcts_release(dev5); dxcts_release(dev);
     return hr;
 }
 
@@ -631,10 +631,10 @@ static int dev_key_of(void *adapter, UINT driver_type, HMODULE software, UINT fl
             return 0;
         if (FAILED(IDXGIAdapter_GetDesc(ad, &desc)))
         {
-            release(ad);
+            dxcts_release(ad);
             return 0;
         }
-        release(ad);
+        dxcts_release(ad);
         out->luid = ((uint64_t)(UINT)desc.AdapterLuid.HighPart << 32) | desc.AdapterLuid.LowPart;
     }
     out->driver_type = driver_type;
@@ -667,8 +667,8 @@ static ULONG WINAPI dev_release(void *self)
         if (i < MAX_PARKED)
             return 0;
     }
-    release(w->st_vs); release(w->st_il); release(w->st_dss); release(w->st_rs);
-    release(w->base.real);
+    dxcts_release(w->st_vs); dxcts_release(w->st_il); dxcts_release(w->st_dss); dxcts_release(w->st_rs);
+    dxcts_release(w->base.real);
     dxcts_wrapper_free(&w->base);
     return 0;
 }
@@ -776,7 +776,7 @@ HRESULT WINAPI dm_d3d11_create_device(dxcts_d3d11_create_fn real, void *adapter,
             if (context)
                 *context = ctx ? wrap_context(parked, ctx) : NULL;
             else
-                release(ctx);
+                dxcts_release(ctx);
             *device = parked;
             if (feature_level)
                 *feature_level = parked->level;

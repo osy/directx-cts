@@ -60,6 +60,19 @@ typedef struct
     int slots;
 } dxcts_iface;
 
+/* Release and AddRef of any COM object, through slots 2 and 1; NULL allowed. */
+static inline void dxcts_release(void *obj)
+{
+    if (obj)
+        ((dxcts_ref_fn)(*(void ***)obj)[2])(obj);
+}
+
+static inline void dxcts_addref(void *obj)
+{
+    if (obj)
+        ((dxcts_ref_fn)(*(void ***)obj)[1])(obj);
+}
+
 /* 0 on an architecture with no thunk, where a shim must pass the object through. */
 int dxcts_wrap_supported(void);
 

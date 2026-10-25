@@ -246,7 +246,7 @@ static int find_software_slot(void *factory, int slots)
             (*(void ***)adapter)[SLOT(IDXGIAdapter1Vtbl, GetDesc1)];
         if (SUCCEEDED(get_desc(adapter, &desc)))
             flags = desc_flags(&desc);
-        ((dxcts_ref_fn)(*(void ***)adapter)[2])(adapter);
+        dxcts_release(adapter);
         if (flags & DXGI_ADAPTER_FLAG_SOFTWARE)
             return -1;              /* the host has one of its own */
     }

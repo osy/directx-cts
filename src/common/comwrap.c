@@ -177,7 +177,7 @@ int dxcts_widest_slots(void *object, const dxcts_iface *set, size_t count, int *
 
         if (SUCCEEDED(qi(object, set[i].iid, &queried)) && queried)
         {
-            ((dxcts_ref_fn)(*(void ***)queried)[2])(queried);
+            dxcts_release(queried);
             if (set[i].slots > best)
                 best = set[i].slots;
         }

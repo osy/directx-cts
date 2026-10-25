@@ -75,18 +75,6 @@ typedef HRESULT (WINAPI *enqueue_fn)(void *, HANDLE);
 #define REAL_CTX(self, method) \
     dxcts_real_vtable(self)[SLOT(ID3D11DeviceContextVtbl, method)]
 
-static inline void release(void *obj)
-{
-    if (obj)
-        ((dxcts_ref_fn)(*(void ***)obj)[2])(obj);
-}
-
-static inline void addref(void *obj)
-{
-    if (obj)
-        ((dxcts_ref_fn)(*(void ***)obj)[1])(obj);
-}
-
 /* --- private-data slots on the real objects --- */
 
 /* {6d2c0d3a-8c1e-4b0f-9a6b-2f0c3e5d7a11}: an R32G32B32 twin's real format and alpha. */

@@ -121,7 +121,7 @@ int rgb32_view(ID3D11View *view)
     if (!res)
         return 0;
     tagged = rgb32_tagged(res, NULL);
-    release(res);
+    dxcts_release(res);
     return tagged;
 }
 
@@ -541,7 +541,7 @@ static int stencil_pipe(dm_device *dw)
     if (!compile || FAILED(compile(k_vs, sizeof(k_vs) - 1, "stencil_vs", NULL, NULL,
                                    "main", "vs_4_0", 0, 0, &code, &err)) || !code)
     {
-        release(err);
+        dxcts_release(err);
         return 0;
     }
     hr = ID3D11Device_CreateVertexShader(dev, ID3D10Blob_GetBufferPointer(code),
@@ -550,7 +550,7 @@ static int stencil_pipe(dm_device *dw)
         hr = ID3D11Device_CreateInputLayout(dev, &k_elem, 1,
                                             ID3D10Blob_GetBufferPointer(code),
                                             ID3D10Blob_GetBufferSize(code), &dw->st_il);
-    release(code);
+    dxcts_release(code);
     memset(&dsd, 0, sizeof(dsd));
     dsd.DepthEnable = FALSE;
     dsd.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
@@ -573,7 +573,7 @@ static int stencil_pipe(dm_device *dw)
         hr = ID3D11Device_CreateRasterizerState(dev, &rsd, &dw->st_rs);
     if (FAILED(hr) || !dw->st_vs || !dw->st_il || !dw->st_dss || !dw->st_rs)
     {
-        release(dw->st_vs); release(dw->st_il); release(dw->st_dss); release(dw->st_rs);
+        dxcts_release(dw->st_vs); dxcts_release(dw->st_il); dxcts_release(dw->st_dss); dxcts_release(dw->st_rs);
         dw->st_vs = NULL; dw->st_il = NULL; dw->st_dss = NULL; dw->st_rs = NULL;
         return 0;
     }
@@ -641,13 +641,13 @@ static void restore_state(ID3D11DeviceContext *c, saved_state *s)
     ID3D11DeviceContext_OMSetDepthStencilState(c, s->dss, s->stencil_ref);
     ID3D11DeviceContext_OMSetBlendState(c, s->bs, s->factor, s->sample_mask);
     ID3D11DeviceContext_SOSetTargets(c, D3D11_SO_BUFFER_SLOT_COUNT, s->so, so_off);
-    release(s->vs); release(s->ps); release(s->gs); release(s->hs); release(s->ds);
-    release(s->il); release(s->vb); release(s->rs);
+    dxcts_release(s->vs); dxcts_release(s->ps); dxcts_release(s->gs); dxcts_release(s->hs); dxcts_release(s->ds);
+    dxcts_release(s->il); dxcts_release(s->vb); dxcts_release(s->rs);
     for (i = 0; i < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; i++)
-        release(s->rtv[i]);
-    release(s->dsv); release(s->dss); release(s->bs);
+        dxcts_release(s->rtv[i]);
+    dxcts_release(s->dsv); dxcts_release(s->dss); dxcts_release(s->bs);
     for (i = 0; i < D3D11_SO_BUFFER_SLOT_COUNT; i++)
-        release(s->so[i]);
+        dxcts_release(s->so[i]);
 }
 
 /* Write the stencil plane of subresource `sub` of `res` inside [x0, x1) x [y0, y1)
@@ -739,7 +739,7 @@ static void stencil_upload(dm_device *dw, ID3D11DeviceContext *ctx, ID3D11Resour
     free(all);
     if (!vb || !dsv)
     {
-        release(vb); release(dsv);
+        dxcts_release(vb); dxcts_release(dsv);
         return;
     }
     save_state(ctx, &saved);
@@ -767,8 +767,8 @@ static void stencil_upload(dm_device *dw, ID3D11DeviceContext *ctx, ID3D11Resour
         ID3D11DeviceContext_Draw(ctx, count[v], first[v]);
     }
     restore_state(ctx, &saved);
-    release(vb);
-    release(dsv);
+    dxcts_release(vb);
+    dxcts_release(dsv);
 }
 
 /* UpdateSubresource of API-layout depth-stencil bytes on the real context: the depth
@@ -938,7 +938,7 @@ static int copy_bc_to_uncompressed(ID3D11Device *dev, ID3D11DeviceContext *ctx,
                                               src_sub, NULL);
     if (FAILED(ID3D11DeviceContext_Map(ctx, staging, src_sub, D3D11_MAP_READ, 0, &m)))
     {
-        release(staging);
+        dxcts_release(staging);
         return 0;
     }
     slice_bytes = (size_t)bw * bh * block;
@@ -953,7 +953,7 @@ static int copy_bc_to_uncompressed(ID3D11Device *dev, ID3D11DeviceContext *ctx,
                        (size_t)bw * block);
     }
     ID3D11DeviceContext_Unmap(ctx, staging, src_sub);
-    release(staging);
+    dxcts_release(staging);
     if (!rows)
         return 0;
     dbox.left = x; dbox.top = y; dbox.front = z;
@@ -968,7 +968,7 @@ static int copy_bc_to_uncompressed(ID3D11Device *dev, ID3D11DeviceContext *ctx,
     {
         ID3D11DeviceContext_CopySubresourceRegion(ctx, dst, dst_sub, x, y, z, target,
                                                   dst_sub, &dbox);
-        release(target);
+        dxcts_release(target);
     }
     free(rows);
     return 1;
@@ -1117,7 +1117,7 @@ static int copy_overlapping_via_temp(ID3D11Device *dev, ID3D11DeviceContext *ctx
     whole.right = td.Width; whole.bottom = td.Height; whole.back = td.Depth;
     ID3D11DeviceContext_CopySubresourceRegion(ctx, dst, dst_sub, x, y, z,
                                               (ID3D11Resource *)tmp, 0, &whole);
-    release(tmp);
+    dxcts_release(tmp);
     return 1;
 }
 
@@ -1473,7 +1473,7 @@ static void drain_deferred_deletes(dm_device *dw)
     if (!ctx)
         return;
     ID3D11DeviceContext_Flush(ctx);
-    release(ctx);
+    dxcts_release(ctx);
 }
 
 /* A texture-shaped create refused because Metal cannot make it. */
@@ -1538,7 +1538,7 @@ static HRESULT create_ds_texture(dm_device *dw, create_texture_fn real, const vo
                 ds_update(dw, ctx, *out, &dt, i, NULL, init[i].pSysMem,
                           init[i].SysMemPitch ? init[i].SysMemPitch : (UINT)rp);
             }
-            release(ctx);
+            dxcts_release(ctx);
         }
     }
     return hr;
@@ -1690,7 +1690,7 @@ static int refuse_buffer_rtv(ID3D11Resource *res, void **out)
         || FAILED(ID3D11Resource_QueryInterface(res, &IID_ID3D11Buffer, (void **)&buf))
         || !buf)
         return 0;
-    release(buf);
+    dxcts_release(buf);
     if (out)
         *out = NULL;
     return 1;
