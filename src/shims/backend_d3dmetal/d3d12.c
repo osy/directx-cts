@@ -325,19 +325,28 @@ static void *unwrap_cmdlist(ID3D12CommandList *list)
     return list;
 }
 
-static void WINAPI queue_execute(void *self, UINT n, ID3D12CommandList *const *lists)
+/* Hands `lists` to `real` with every wrapped list replaced by the list it wraps. */
+static void execute_unwrapped(execute_fn real, void *queue, UINT n,
+                              ID3D12CommandList *const *lists)
 {
-    execute_fn real = queue_real_execute(*(void ***)self);
     ID3D12CommandList *local[64], **unwrapped = local;
     UINT i;
 
-    if (!real || (n > 64 && !(unwrapped = malloc(n * sizeof(*unwrapped)))))
+    if (n > 64 && !(unwrapped = malloc(n * sizeof(*unwrapped))))
         return;
     for (i = 0; i < n; i++)
         unwrapped[i] = unwrap_cmdlist(lists[i]);
-    real(self, n, unwrapped);
+    real(queue, n, unwrapped);
     if (unwrapped != local)
         free(unwrapped);
+}
+
+static void WINAPI queue_execute(void *self, UINT n, ID3D12CommandList *const *lists)
+{
+    execute_fn real = queue_real_execute(*(void ***)self);
+
+    if (real)
+        execute_unwrapped(real, self, n, lists);
 }
 
 /* Whether the queue's ExecuteCommandLists now unwraps (patched now or before). */
@@ -399,18 +408,9 @@ static HRESULT WINAPI queue_qi(void *self, const GUID *iid, void **out)
 
 static void WINAPI queue_wrapper_execute(void *self, UINT n, ID3D12CommandList *const *lists)
 {
-    execute_fn real = (execute_fn)dxcts_real_vtable(self)[SLOT(ID3D12CommandQueueVtbl,
-                                                                  ExecuteCommandLists)];
-    ID3D12CommandList *local[64], **unwrapped = local;
-    UINT i;
-
-    if (n > 64 && !(unwrapped = malloc(n * sizeof(*unwrapped))))
-        return;
-    for (i = 0; i < n; i++)
-        unwrapped[i] = unwrap_cmdlist(lists[i]);
-    real(dxcts_real(self), n, unwrapped);
-    if (unwrapped != local)
-        free(unwrapped);
+    execute_unwrapped((execute_fn)dxcts_real_vtable(self)[SLOT(ID3D12CommandQueueVtbl,
+                                                                ExecuteCommandLists)],
+                      dxcts_real(self), n, lists);
 }
 
 static void *queue_out(void *object, const GUID *iid)
@@ -459,14 +459,19 @@ static HRESULT WINAPI dev_create_queue1(void *self, const D3D12_COMMAND_QUEUE_DE
 
 /* --- resources --- */
 
-/* A texture-shaped description refused because Metal cannot make it (buffers are
- * never refused). */
+/* A texture-shaped description Metal cannot make (buffers are never refused). */
+static int unmakeable(const D3D12_RESOURCE_DESC *desc)
+{
+    return desc && desc->Dimension != D3D12_RESOURCE_DIMENSION_BUFFER
+        && dm_knob_texture_guard()
+        && !dm_format_texture_ok(desc->Format,
+                                 desc->Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL,
+                                 desc->SampleDesc.Count);
+}
+
 static int refuse_desc(const D3D12_RESOURCE_DESC *desc, void **out)
 {
-    if (!desc || desc->Dimension == D3D12_RESOURCE_DIMENSION_BUFFER || !dm_knob_texture_guard()
-        || dm_format_texture_ok(desc->Format,
-                                desc->Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL,
-                                desc->SampleDesc.Count))
+    if (!unmakeable(desc))
         return 0;
     dm_count(&dm_counts.refused_creates);
     if (out)
@@ -576,22 +581,15 @@ static HRESULT WINAPI dev_create_reserved1(void *self, const D3D12_RESOURCE_DESC
 /*
  * The allocation-info query builds the same MTLTextureDescriptor a create does, and
  * Metal's validation abort()s on the same descriptions, so the texture refusal applies
- * here too.  D3D12 reports an invalid description as SizeInBytes == UINT64_MAX.
- *
- * The method returns a 16-byte struct, and how depends on the architecture: through a
- * hidden pointer passed after `this` on x64 and x86, in x0:x1 on arm64.
+ * here too.  D3D12 reports an invalid description as SizeInBytes == UINT64_MAX.  The
+ * 16-byte result comes back through the hidden pointer, as for GetDesc above.
  */
 static int alloc_info_refused(UINT n, const D3D12_RESOURCE_DESC *descs)
 {
     UINT i;
 
-    if (!dm_knob_texture_guard())
-        return 0;
     for (i = 0; descs && i < n; i++)
-        if (descs[i].Dimension != D3D12_RESOURCE_DIMENSION_BUFFER
-            && !dm_format_texture_ok(descs[i].Format,
-                                     descs[i].Flags & D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL,
-                                     descs[i].SampleDesc.Count))
+        if (unmakeable(&descs[i]))
         {
             dm_count(&dm_counts.refused_creates);
             return 1;
